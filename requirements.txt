@@ -1,7 +1,7 @@
 feedparser==6.0.11
 sentence-transformers==3.0.1
 scikit-learn==1.5.2
-groq==0.9.0
+groq==0.10.0
 requests==2.32.3
 langdetect==1.0.9
 Pillow>=8.2.0
