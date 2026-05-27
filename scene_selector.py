@@ -76,7 +76,7 @@ def get_search_keywords(intent_result, retry_loop=0):
         return list(tmpl_primary["secondary"])
 
     elif retry_loop == 2:
-        return list(tmpl_secondary["tertiary"])
+        return list(tmpl_primary["tertiary"])   # always stay in primary intent's topic
 
     else:
         return list(FALLBACK_KEYWORDS.get(primary, ["news"]))

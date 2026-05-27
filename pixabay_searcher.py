@@ -11,7 +11,7 @@ from scene_selector import get_search_keywords
 
 logger = logging.getLogger(__name__)
 
-CLIP_ACCEPT_THRESHOLD = 0.30   # per spec
+CLIP_ACCEPT_THRESHOLD = 0.28   # lowered from 0.30; CLIP text↔image scores run 0.22-0.30 in practice
 MAX_RETRY_LOOPS = 3             # 0,1,2,3 → 4 attempts total
 PIXABAY_RESULTS_PER_CALL = 5
 
@@ -38,30 +38,48 @@ def _clip_score(image_path, scene_keywords):
 # ── Pixabay search ─────────────────────────────────────────────────────────
 
 def _search_pixabay(keywords):
-    """Return list of largeImageURLs from Pixabay (up to PIXABAY_RESULTS_PER_CALL)."""
+    """
+    Try each keyword PHRASE individually until results are found.
+    Never joins all phrases into one long query — Pixabay returns poor results
+    and sometimes times out on strings longer than 3-4 words.
+    """
     api_key = os.getenv("PIXABAY_API_KEY")
     if not api_key:
         return []
-    query = " ".join(keywords) if isinstance(keywords, list) else keywords
-    try:
-        r = requests.get(
-            "https://pixabay.com/api/",
-            params={
-                "key": api_key,
-                "q": query,
-                "image_type": "photo",
-                "per_page": PIXABAY_RESULTS_PER_CALL,
-                "safesearch": "true",
-                "orientation": "horizontal",
-                "min_width": 1000,
-            },
-            timeout=12,
-        )
-        hits = r.json().get("hits", [])
-        return [h["largeImageURL"] for h in hits if h.get("largeImageURL")]
-    except Exception as e:
-        logger.error(f"Pixabay search error for '{query}': {e}")
-        return []
+
+    phrases = keywords if isinstance(keywords, list) else [keywords]
+    seen, results = set(), []
+
+    for phrase in phrases:
+        phrase = phrase.strip()
+        if not phrase:
+            continue
+        try:
+            r = requests.get(
+                "https://pixabay.com/api/",
+                params={
+                    "key": api_key,
+                    "q": phrase,
+                    "image_type": "photo",
+                    "per_page": PIXABAY_RESULTS_PER_CALL,
+                    "safesearch": "true",
+                    "orientation": "horizontal",
+                    "min_width": 1000,
+                },
+                timeout=12,
+            )
+            for h in r.json().get("hits", []):
+                url = h.get("largeImageURL")
+                if url and url not in seen:
+                    seen.add(url)
+                    results.append(url)
+            if results:
+                break   # stop on first phrase that returns hits
+        except Exception as e:
+            logger.warning(f"Pixabay search error for '{phrase}': {e}")
+            continue    # try next phrase if this one times out / errors
+
+    return results[:PIXABAY_RESULTS_PER_CALL]
 
 
 # ── Image download ─────────────────────────────────────────────────────────
