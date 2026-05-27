@@ -220,7 +220,7 @@ def run_pipeline():
                 max(0, (next_available(p) - now_utc).total_seconds())
                 for p in ["facebook", "instagram"]
             )
-            if max_wait <= 600:
+            if max_wait <= 1200:   # wait up to 20 min; GH Actions timeout is 35 min
                 print(f"  Cooldowns expire in {int(max_wait)}s — waiting...")
                 time.sleep(max_wait + 5)
                 platforms_ready = get_platforms_ready()
