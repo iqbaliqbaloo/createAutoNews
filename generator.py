@@ -1,6 +1,5 @@
 import os
 import re
-import time
 import requests
 import tempfile
 from dotenv import load_dotenv
@@ -16,8 +15,6 @@ load_dotenv()
 # ─────────────────────────────
 clip_model = SentenceTransformer("clip-ViT-B-32")
 
-GRAPH_URL = "https://graph.facebook.com/v19.0"
-
 
 # ─────────────────────────────
 # CLIP SCORE (FIXED)
@@ -26,6 +23,9 @@ def clip_score(text, image_path):
     try:
         if not image_path or not os.path.exists(image_path):
             return 0.0
+
+        # CLIP text encoder hard limit is 77 tokens; ~50 words stays safely under it
+        text = " ".join(text.split()[:50])
 
         img = Image.open(image_path).convert("RGB")
 
@@ -76,7 +76,7 @@ def safe_download(url):
             return None
 
         # ❌ extra validation (prevents corrupted jpg)
-        if b"<html" in r.content[:200].lower():
+        if b"<html" in r.content[:200] or b"<HTML" in r.content[:200]:
             return None
 
         tmp = tempfile.NamedTemporaryFile(delete=False, suffix=".jpg")
@@ -151,8 +151,11 @@ def generate_image(keywords, headline, source_type="world", is_breaking=False):
 
     best_img = None
     best_score = 0.0
+    done = False
 
     for term in search_terms:
+        if done:
+            break
 
         try:
             r = requests.get(
@@ -184,13 +187,24 @@ def generate_image(keywords, headline, source_type="world", is_breaking=False):
 
                 print(f"CLIP score: {score}")
 
-                # keep best match
                 if score > best_score:
+                    # discard previous best before replacing it
+                    if best_img:
+                        try:
+                            os.unlink(best_img)
+                        except OSError:
+                            pass
                     best_score = score
                     best_img = img_path
+                else:
+                    # this download lost — clean it up now
+                    try:
+                        os.unlink(img_path)
+                    except OSError:
+                        pass
 
-                # early stop if perfect match found
                 if best_score >= 0.35:
+                    done = True
                     break
 
         except Exception as e:
@@ -200,7 +214,18 @@ def generate_image(keywords, headline, source_type="world", is_breaking=False):
     # FINAL DECISION RULE
     # ─────────────────────────────
     if best_img and best_score >= 0.20:
-        return add_text_overlay(best_img, headline, source_type, is_breaking)
+        result = add_text_overlay(best_img, headline, source_type, is_breaking)
+        try:
+            os.unlink(best_img)
+        except OSError:
+            pass
+        return result
+
+    if best_img:
+        try:
+            os.unlink(best_img)
+        except OSError:
+            pass
 
     print("❌ No good match → fallback image")
 

@@ -62,6 +62,9 @@ def title_already_posted(conn, title, threshold=0.78):
 
     old_titles = [r[0] for r in rows if r[0]]
 
+    if not old_titles:
+        return False
+
     texts = [title] + old_titles
 
     embeddings = model.encode(texts, show_progress_bar=False)

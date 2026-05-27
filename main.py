@@ -4,7 +4,6 @@ import pytz
 import time
 from datetime import datetime
 from dotenv import load_dotenv
-
 load_dotenv()
 
 try:
@@ -140,7 +139,7 @@ def run_pipeline():
                 score = clip_score(content["post_text"], image_path)
                 print(f"Final CLIP score: {score:.3f}")
 
-                if score < 0.30:
+                if score < 0.18:
                     print("❌ Image mismatch detected — skipping post")
                     try:
                         os.unlink(image_path)
@@ -153,10 +152,6 @@ def run_pipeline():
 
             # ─── FACEBOOK POST ─────────────────
             fb_result = post_to_facebook(content["post_text"], image_path)
-
-            if fb_result is None:
-                print("❌ Fatal FB error (token issue)")
-                return
 
             if fb_result:
 
