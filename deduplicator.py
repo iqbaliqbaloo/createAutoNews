@@ -1,31 +1,91 @@
 from sentence_transformers import SentenceTransformer
 from sklearn.metrics.pairwise import cosine_similarity
+import re
 
+# ─── LOAD MODEL ONCE (SAFE INIT) ─────────────────────────
 model = SentenceTransformer("all-MiniLM-L6-v2")
 
+
+# ─── CLEAN TEXT ───────────────────────────────────────────
+
+def clean_text(text):
+    text = text or ""
+    text = re.sub(r"<[^>]+>", "", text)
+    text = re.sub(r"\s+", " ", text)
+    return text.strip()
+
+
+# ─── SAFE GET ─────────────────────────────────────────────
+
+def safe_get(article, key):
+    return article.get(key, "") or ""
+
+
+# ─── MAIN DEDUP FUNCTION ──────────────────────────────────
+
 def deduplicate(articles, threshold=0.82):
+
     if not articles:
         return []
-    texts = [a["title"] + " " + a["summary"] for a in articles]
-    embeddings = model.encode(texts)
+
+    # Step 1: Build clean texts
+    texts = []
+    valid_articles = []
+
+    for a in articles:
+        title = clean_text(safe_get(a, "title"))
+        summary = clean_text(safe_get(a, "summary"))
+
+        if not title:
+            continue
+
+        text = (title + " " + summary).strip()
+        texts.append(text)
+        valid_articles.append(a)
+
+    if not texts:
+        return []
+
+    # Step 2: Embeddings
+    embeddings = model.encode(texts, show_progress_bar=False)
     sim_matrix = cosine_similarity(embeddings)
 
     visited = set()
-    merged  = []
+    merged = []
 
-    for i in range(len(articles)):
+    # Step 3: Improved clustering
+    for i in range(len(valid_articles)):
+
         if i in visited:
             continue
-        cluster = [i]
-        for j in range(i+1, len(articles)):
+
+        cluster = []
+
+        for j in range(len(valid_articles)):
             if j not in visited and sim_matrix[i][j] >= threshold:
                 cluster.append(j)
-                visited.add(j)
-        visited.add(i)
 
-        best = articles[cluster[0]]
-        best["sources"] = [articles[k]["url"] for k in cluster]
+        if not cluster:
+            continue
+
+        visited.update(cluster)
+
+        # Step 4: Pick BEST article in cluster
+        best_idx = max(cluster, key=lambda k: len(texts[k]))
+
+        best = dict(valid_articles[best_idx])  # COPY (important fix)
+
+        # Step 5: Merge sources safely
+        sources = list(set(
+            valid_articles[k].get("url", "")
+            for k in cluster
+            if valid_articles[k].get("url")
+        ))
+
+        best["sources"] = sources
+
         merged.append(best)
 
     print(f"After dedup: {len(merged)} unique stories")
+
     return merged

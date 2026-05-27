@@ -4,6 +4,7 @@ import re
 import requests
 from html import unescape
 from datetime import datetime, timedelta, timezone
+from urllib.parse import urlparse
 
 PAKISTAN_SOURCES = [
     "https://www.geo.tv/rss/1/0",
@@ -26,7 +27,10 @@ WORLD_SOURCES = [
     "https://www.smh.com.au/rss/world.xml",
 ]
 
-HEADERS = {"User-Agent": "Mozilla/5.0 (compatible; NewsPoster/1.0)"}
+HEADERS = {"User-Agent": "Mozilla/5.0 (NewsBot/1.0)"}
+
+
+# ---------------- CLEAN ---------------- #
 
 def clean_text(text):
     text = re.sub(r"<[^>]+>", "", text)
@@ -34,22 +38,32 @@ def clean_text(text):
     text = re.sub(r"\s+", " ", text)
     return text.strip()
 
+
+# ---------------- FRESHNESS ---------------- #
+
 def is_fresh(entry, hours=8):
     if not hasattr(entry, "published_parsed") or not entry.published_parsed:
         return False
     try:
         published = datetime(*entry.published_parsed[:6], tzinfo=timezone.utc)
-        age       = datetime.now(timezone.utc) - published
-        return age <= timedelta(hours=hours)
-    except Exception:
+        return (datetime.now(timezone.utc) - published) <= timedelta(hours=hours)
+    except:
         return False
 
+
+# ---------------- FETCH FEED ---------------- #
+
 def fetch_feed(url, timeout=10):
-    """Fetch RSS with proper timeout using requests"""
     try:
-        r    = requests.get(url, headers=HEADERS, timeout=timeout)
-        feed = feedparser.parse(r.text)
-        return feed
+        r = requests.get(url, headers=HEADERS, timeout=timeout)
+
+        # BASIC VALIDATION (IMPORTANT FIX)
+        if "xml" not in r.headers.get("Content-Type", "") and "<rss" not in r.text:
+            print(f"  ✗ Invalid RSS response: {url}")
+            return None
+
+        return feedparser.parse(r.text)
+
     except requests.Timeout:
         print(f"  ✗ Timeout: {url}")
         return None
@@ -57,57 +71,72 @@ def fetch_feed(url, timeout=10):
         print(f"  ✗ Error {url}: {e}")
         return None
 
+
+# ---------------- EVENT KEY (IMPORTANT FIX) ---------------- #
+
+def generate_event_key(title, summary):
+    text = (title + " " + summary).lower()
+    text = re.sub(r"[^a-z0-9 ]", "", text)
+    text = re.sub(r"\s+", " ", text).strip()
+    return hashlib.md5(text.encode()).hexdigest()
+
+
+# ---------------- MAIN FETCH ---------------- #
+
 def fetch_articles():
-    articles  = []
+    articles = []
     seen_urls = set()
 
-    print("Fetching Pakistan sources...")
-    for url in PAKISTAN_SOURCES:
+    def process(url, source_type):
         feed = fetch_feed(url)
         if not feed:
-            continue
+            return
+
         count = 0
+
         for entry in feed.entries:
             if not is_fresh(entry):
                 continue
+
             link = getattr(entry, "link", None)
             if not link or link in seen_urls:
                 continue
+
             seen_urls.add(link)
+
+            title = clean_text(entry.title)
+            summary = clean_text(entry.get("summary", title))
+
+            domain = urlparse(url).netloc
+
             articles.append({
-                "title":       clean_text(entry.title),
-                "summary":     clean_text(entry.get("summary", entry.title)),
-                "url":         link,
-                "source_type": "pakistan",
-                "source_url":  url,
-                "hash":        hashlib.md5(link.encode()).hexdigest()
+                "title": title,
+                "summary": summary,
+                "url": link,
+                "source_url": url,
+                "source_type": source_type,
+
+                # FIX 1: event-based key (IMPORTANT)
+                "event_id": generate_event_key(title, summary),
+
+                # FIX 2: domain (for trust scoring later)
+                "domain": domain,
+
+                # FIX 3: better hash (article identity)
+                "hash": hashlib.md5(link.encode()).hexdigest()
             })
+
             count += 1
-        print(f"  ✓ {url.split('/')[2]} → {count} articles")
+
+        print(f"  ✓ {domain} → {count} articles")
+
+    print("Fetching Pakistan sources...")
+    for u in PAKISTAN_SOURCES:
+        process(u, "pakistan")
 
     print("Fetching World sources...")
-    for url in WORLD_SOURCES:
-        feed = fetch_feed(url)
-        if not feed:
-            continue
-        count = 0
-        for entry in feed.entries:
-            if not is_fresh(entry):
-                continue
-            link = getattr(entry, "link", None)
-            if not link or link in seen_urls:
-                continue
-            seen_urls.add(link)
-            articles.append({
-                "title":       clean_text(entry.title),
-                "summary":     clean_text(entry.get("summary", entry.title)),
-                "url":         link,
-                "source_type": "world",
-                "source_url":  url,
-                "hash":        hashlib.md5(link.encode()).hexdigest()
-            })
-            count += 1
-        print(f"  ✓ {url.split('/')[2]} → {count} articles")
+    for u in WORLD_SOURCES:
+        process(u, "world")
 
     print(f"\nTotal fetched: {len(articles)} articles")
     return articles

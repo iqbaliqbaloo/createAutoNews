@@ -1,13 +1,53 @@
-import os, requests
+import os
+import requests
 
-token   = os.environ.get("FB_PAGE_TOKEN", "MISSING")
-page_id = os.environ.get("FB_PAGE_ID", "MISSING")
+token = os.environ.get("FB_PAGE_TOKEN")
+page_id = os.environ.get("FB_PAGE_ID")
 
-print("Token starts: " + token[:15] + "...")
-print("Page ID: " + page_id)
 
-r = requests.post(
-    "https://graph.facebook.com/v19.0/" + page_id + "/feed",
-    data={"message": "debug test delete", "access_token": token}
-)
-print("Response: " + str(r.json()))
+# ─── SAFE CHECKS ─────────────────────────────
+
+if not token or not page_id:
+    print("ERROR: Missing FB_PAGE_TOKEN or FB_PAGE_ID")
+    exit()
+
+
+print("Token loaded: YES")
+print("Token preview:", token[:10] + "...")
+
+
+# ─── REQUEST ────────────────────────────────
+
+try:
+    url = f"https://graph.facebook.com/v19.0/{page_id}/feed"
+
+    r = requests.post(
+        url,
+        data={
+            "message": "debug test delete",
+            "access_token": token
+        },
+        timeout=20
+    )
+
+    # ─── SAFE RESPONSE HANDLING ─────────────
+
+    try:
+        data = r.json()
+    except Exception:
+        print("Invalid JSON response")
+        print("Raw response:", r.text)
+        exit()
+
+    print("Status Code:", r.status_code)
+    print("Response:", data)
+
+    # ─── SUCCESS CHECK ───────────────────────
+
+    if "id" in data:
+        print("SUCCESS: Post created with ID:", data["id"])
+    else:
+        print("FAILED:", data.get("error", data))
+
+except Exception as e:
+    print("Request error:", str(e))

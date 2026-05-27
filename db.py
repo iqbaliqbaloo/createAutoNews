@@ -1,9 +1,17 @@
 import sqlite3
 from sklearn.metrics.pairwise import cosine_similarity
-from deduplicator import model
+from sentence_transformers import SentenceTransformer
+from datetime import datetime, timezone, timedelta
+
+# ─── LOAD MODEL SAFELY ─────────────────────────────
+model = SentenceTransformer("all-MiniLM-L6-v2")
+
+
+# ─── INIT DB ───────────────────────────────────────
 
 def init_db():
     conn = sqlite3.connect("state.db")
+
     conn.execute("""
         CREATE TABLE IF NOT EXISTS posted (
             url_hash  TEXT,
@@ -13,64 +21,101 @@ def init_db():
             PRIMARY KEY (url_hash, platform)
         )
     """)
-    conn.execute("""
-        CREATE INDEX IF NOT EXISTS idx_posted_at
-        ON posted(posted_at)
-    """)
-    conn.execute("""
-        CREATE INDEX IF NOT EXISTS idx_platform
-        ON posted(platform)
-    """)
-    conn.execute("""
-        DELETE FROM posted
-        WHERE posted_at < datetime('now', '-30 days')
-    """)
+
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_platform ON posted(platform)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_time ON posted(posted_at)")
+
     conn.commit()
     return conn
 
+
+# ─── CHECK URL DUPLICATE ──────────────────────────
+
 def already_posted(conn, url_hash):
-    return conn.execute(
-        "SELECT 1 FROM posted WHERE url_hash=?", (url_hash,)
-    ).fetchone() is not None
+    if not url_hash:
+        return False
+
+    row = conn.execute(
+        "SELECT 1 FROM posted WHERE url_hash=?",
+        (url_hash,)
+    ).fetchone()
+
+    return row is not None
+
+
+# ─── FAST TITLE DUPLICATE CHECK (OPTIMIZED) ───────
 
 def title_already_posted(conn, title, threshold=0.78):
+
+    title = (title or "").strip()
+    if not title:
+        return False
+
     rows = conn.execute("""
         SELECT title FROM posted
         WHERE posted_at >= datetime('now', '-3 days')
+        LIMIT 200
     """).fetchall()
+
     if not rows:
         return False
-    posted_titles = [r[0] for r in rows]
-    all_texts     = [title] + posted_titles
-    all_embs      = model.encode(all_texts, show_progress_bar=False)
-    new_emb       = all_embs[:1]
-    old_embs      = all_embs[1:]
-    sims          = cosine_similarity(new_emb, old_embs)[0]
-    return float(sims.max()) >= threshold
+
+    old_titles = [r[0] for r in rows if r[0]]
+
+    texts = [title] + old_titles
+
+    embeddings = model.encode(texts, show_progress_bar=False)
+
+    new_emb = embeddings[0:1]
+    old_emb = embeddings[1:]
+
+    sims = cosine_similarity(new_emb, old_emb)[0]
+
+    return float(max(sims)) >= threshold
+
+
+# ─── MARK POSTED ───────────────────────────────────
 
 def mark_posted(conn, url_hash, title, platform):
+
+    if not url_hash or not platform:
+        return False
+
     try:
-        conn.execute(
-            "INSERT OR IGNORE INTO posted (url_hash, platform, title) VALUES (?,?,?)",
-            (url_hash, platform, title)
-        )
+        conn.execute("""
+            INSERT OR IGNORE INTO posted (url_hash, platform, title)
+            VALUES (?, ?, ?)
+        """, (url_hash, platform, title))
+
         conn.commit()
+        return True
+
     except Exception as e:
-        print(f"  DB mark_posted error: {e}")
+        print(f"DB error: {e}")
         conn.rollback()
+        return False
+
+
+# ─── DAILY LIMIT (SAFE PKT HANDLING) ──────────────
 
 def get_today_count(conn, platform):
-    """Count posts made today in PKT timezone (UTC+5)"""
-    from datetime import datetime, timezone, timedelta
-    PKT     = timezone(timedelta(hours=5))
-    now_pkt = datetime.now(PKT)
-    # Today start in PKT converted to UTC for SQLite
-    today_start_pkt = now_pkt.replace(hour=0, minute=0, second=0, microsecond=0)
-    today_start_utc = today_start_pkt.astimezone(timezone.utc)
-    today_str       = today_start_utc.strftime("%Y-%m-%d %H:%M:%S")
 
-    return conn.execute("""
-        SELECT COUNT(*) FROM posted
+    PKT = timezone(timedelta(hours=5))
+    now_pkt = datetime.now(PKT)
+
+    today_start = now_pkt.replace(
+        hour=0, minute=0, second=0, microsecond=0
+    )
+
+    today_utc = today_start.astimezone(timezone.utc)
+
+    today_str = today_utc.strftime("%Y-%m-%d %H:%M:%S")
+
+    row = conn.execute("""
+        SELECT COUNT(*)
+        FROM posted
         WHERE platform=?
         AND posted_at >= ?
-    """, (platform, today_str)).fetchone()[0]
+    """, (platform, today_str)).fetchone()
+
+    return row[0] if row else 0

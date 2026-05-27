@@ -1,96 +1,169 @@
 import time
 import requests
+from collections import Counter
+
+
+# ─────────────────────────────────────────────
+# MAIN TREND ENGINE
+# ─────────────────────────────────────────────
 
 def get_trending_topics():
-    trending = []
 
-    # Method 1 — pytrends (may fail on GitHub Actions)
+    trending = []
+    scores = Counter()
+
+    # ───────────── METHOD 1: PYTRENDS (SAFE) ─────────────
     try:
         from pytrends.request import TrendReq
-        pytrends = TrendReq(hl="en-US", tz=300, timeout=(5, 10))
 
-        try:
-            pk = pytrends.trending_searches(pn="pakistan")
-            trending += pk[0].tolist()[:10]
-            print(f"  Pakistan trends: {pk[0].tolist()[:5]}")
-            time.sleep(1)
-        except Exception:
-            pass
+        pytrends = TrendReq(
+            hl="en-US",
+            tz=300,
+            timeout=(5, 10)
+        )
 
-        try:
-            us = pytrends.trending_searches(pn="united_states")
-            trending += us[0].tolist()[:8]
-            time.sleep(1)
-        except Exception:
-            pass
+        # safer region handling
+        regions = ["pakistan", "united_states"]
+
+        for region in regions:
+            try:
+                data = pytrends.trending_searches(pn=region)
+
+                if data is not None and len(data) > 0:
+                    items = data[0].tolist()[:8]
+                    trending.extend(items)
+
+                time.sleep(2)  # safer delay
+
+            except Exception:
+                continue
 
     except Exception as e:
         print(f"  pytrends unavailable: {e}")
 
-    # Method 2 — RSS based trending (always works)
-    # Topics covered by 3+ sources = trending
-    try:
-        trending_rss = _get_rss_trending()
-        trending    += trending_rss
-        print(f"  RSS trends found: {len(trending_rss)}")
-    except Exception as e:
-        print(f"  RSS trending error: {e}")
 
-    # Method 3 — Hardcoded always-important topics as fallback
+    # ───────────── METHOD 2: RSS INTELLIGENCE ─────────────
+    try:
+        rss_trends = _get_rss_trending()
+        trending.extend(rss_trends)
+        print(f"  RSS trends found: {len(rss_trends)}")
+
+    except Exception as e:
+        print(f"  RSS error: {e}")
+
+
+    # ───────────── METHOD 3: FALLBACK GLOBAL CORE ─────────
     if not trending:
         trending = [
-            "pakistan", "imf", "army", "blast", "flood",
-            "election", "court", "israel", "gaza", "iran",
-            "ukraine", "russia", "china", "us", "war",
-            "economy", "rupee", "inflation", "attack", "killed"
+            "pakistan economy", "imf loan", "gaza war",
+            "russia ukraine war", "china us tension",
+            "inflation crisis", "election results",
+            "army operation", "flood disaster"
         ]
-        print("  Using fallback trending topics")
+        print("  Using fallback trends")
 
-    # Clean and deduplicate
-    trending = list(set([
-        t.lower().strip()
-        for t in trending
-        if t and len(t) > 2
-    ]))
 
-    print(f"  Total trending topics: {len(trending)}")
-    return trending
+    # ───────────── CLEANING + NORMALIZATION ─────────────
+    cleaned = []
+
+    for t in trending:
+        if not t:
+            continue
+
+        t = t.lower().strip()
+
+        # remove noise words
+        noise = {
+            "the", "a", "an", "breaking", "news",
+            "update", "latest", "live"
+        }
+
+        words = [
+            w for w in t.split()
+            if w not in noise and len(w) > 2
+        ]
+
+        if words:
+            cleaned.append(" ".join(words))
+
+
+    # ───────────── SCORING SYSTEM (IMPORTANT FIX) ────────
+    for item in cleaned:
+        scores[item] += 1
+
+
+    # boost multi-source overlap
+    final_trends = [
+        topic for topic, count in scores.items()
+        if count >= 2 or len(topic.split()) >= 2
+    ]
+
+
+    print(f"  Total trending topics: {len(final_trends)}")
+
+    return final_trends
+
+
+# ─────────────────────────────────────────────
+# RSS TREND ENGINE (IMPROVED VERSION)
+# ─────────────────────────────────────────────
 
 def _get_rss_trending():
-    """Extract trending topics from top news RSS feeds"""
-    import feedparser
-    from collections import Counter
 
-    TRENDING_SOURCES = [
+    import feedparser
+
+    SOURCES = [
         "https://feeds.bbci.co.uk/news/rss.xml",
         "https://feeds.reuters.com/reuters/topNews",
         "https://www.aljazeera.com/xml/rss/all.xml",
     ]
 
     word_count = Counter()
-    SKIP_WORDS = {
-        "the", "a", "an", "and", "or", "but", "in", "on",
-        "at", "to", "for", "of", "with", "as", "by", "from",
-        "that", "this", "it", "is", "are", "was", "were",
-        "be", "been", "have", "has", "had", "will", "would",
-        "could", "should", "may", "might", "its", "their",
-        "after", "over", "about", "into", "than", "more",
-        "new", "says", "said", "says", "amid"
+
+    SKIP = {
+        "the","and","for","with","that","this","from","have",
+        "has","was","were","are","will","said","says","into",
+        "after","over","more","new","out","about"
     }
 
-    for url in TRENDING_SOURCES:
+    for url in SOURCES:
+
         try:
-            r    = requests.get(url, timeout=8,
-                               headers={"User-Agent": "Mozilla/5.0"})
+            r = requests.get(
+                url,
+                timeout=10,
+                headers={"User-Agent": "Mozilla/5.0"}
+            )
+
             feed = feedparser.parse(r.text)
-            for entry in feed.entries[:15]:
-                words = entry.title.lower().split()
-                for word in words:
-                    word = word.strip(".,!?:;\"'()-")
-                    if word and word not in SKIP_WORDS and len(word) > 3:
-                        word_count[word] += 1
+
+            for entry in feed.entries[:20]:
+
+                title = entry.get("title", "").lower()
+
+                # phrase-level capture (IMPORTANT FIX)
+                phrases = [
+                    title,
+                    " ".join(title.split()[:2]),
+                    " ".join(title.split()[:3])
+                ]
+
+                for phrase in phrases:
+
+                    words = phrase.split()
+
+                    for w in words:
+                        w = w.strip(".,!?\"'()[]{}")
+
+                        if w and w not in SKIP and len(w) > 3:
+                            word_count[w] += 1
+
         except Exception:
             continue
 
-    # Words appearing 3+ times across sources = trending
-    return [word for word, count in word_count.items() if count >= 3]
+
+    # strong filter
+    return [
+        word for word, count in word_count.items()
+        if count >= 3
+    ]
