@@ -158,63 +158,56 @@ def post_to_facebook(text, image_path=None):
 # ─────────────────────────────────────────────
 
 def post_to_instagram(text, image_path=None):
-
     FB_PAGE_TOKEN = os.getenv("FB_PAGE_TOKEN")
     IG_USER_ID    = os.getenv("IG_USER_ID")
 
     if not FB_PAGE_TOKEN or not IG_USER_ID:
-        print("ERROR: Missing Instagram credentials")
+        print("Missing Instagram credentials")
         return False
 
-    if not image_path or not os.path.exists(image_path):
-        print("Instagram requires image")
+    img_url = upload_to_imgbb(image_path)
+    if not img_url:
         return False
 
-    print(f"Posting to Instagram: {IG_USER_ID}")
+    # 1. Create media container
+    r = requests.post(
+        f"https://graph.facebook.com/v19.0/{IG_USER_ID}/media",
+        data={
+            "image_url": img_url,
+            "caption": text,
+            "access_token": FB_PAGE_TOKEN
+        }
+    )
 
-    try:
-        img_url = upload_to_imgbb(image_path)
+    container = r.json()
 
-        if not img_url:
-            print("Instagram image upload failed")
-            return False
+    if "id" not in container:
+        print("Container failed:", container)
+        return False
 
-        # Create container
-        r = requests.post(
-            f"https://graph.facebook.com/v19.0/{IG_USER_ID}/media",
-            data={
-                "image_url": img_url,
-                "caption": text,
-                "access_token": FB_PAGE_TOKEN
-            },
-            timeout=30
-        )
+    creation_id = container["id"]
 
-        container = r.json()
+    # 🔥 IMPORTANT FIX: wait before publish
+    time.sleep(10)
 
-        if "id" not in container:
-            print(f"Instagram container error: {container}")
-            return False
-
-        # Publish
+    # 2. Retry publish (important)
+    for i in range(5):
         r2 = requests.post(
             f"https://graph.facebook.com/v19.0/{IG_USER_ID}/media_publish",
             data={
-                "creation_id": container["id"],
+                "creation_id": creation_id,
                 "access_token": FB_PAGE_TOKEN
-            },
-            timeout=30
+            }
         )
 
         result = r2.json()
 
         if "id" in result:
-            print("Instagram posted successfully")
+            print("Instagram posted ✔")
             return True
 
-        print(f"Instagram publish failed: {result}")
-        return False
+        print(f"Retry {i+1}: {result}")
+        time.sleep(5)
 
-    except Exception as e:
-        print(f"Instagram exception: {e}")
-        return False
+    print("Instagram failed after retries")
+    return False
