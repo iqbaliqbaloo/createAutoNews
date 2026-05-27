@@ -184,7 +184,11 @@ def _draw_pill(draw, text, pos, font, bg_color, fg_color, pad_x=20, pad_y=8):
 
 
 def _wrap_headline(draw, text, font, max_width):
-    """Word-wrap text to max_width pixels; returns at most 2 lines."""
+    """
+    Word-wrap text to max_width pixels; returns at most 2 lines.
+    If the full text doesn't fit in 2 lines the second line is trimmed
+    and suffixed with "…" so readers know the headline continues.
+    """
     words = text.split()
     lines, current = [], []
     for word in words:
@@ -195,8 +199,21 @@ def _wrap_headline(draw, text, font, max_width):
             if current:
                 lines.append(" ".join(current))
             current = [word]
-    if current:
+            if len(lines) == 2:
+                break   # hard stop at 2 lines
+    if current and len(lines) < 2:
         lines.append(" ".join(current))
+
+    # If text was truncated, suffix the last line with "…"
+    used_words = sum(len(l.split()) for l in lines)
+    if used_words < len(words) and lines:
+        last = lines[-1]
+        ellipsis = "…"
+        # Trim words from the end until "last… " fits within max_width
+        while last and _text_size(draw, last + ellipsis, font)[0] > max_width:
+            last = " ".join(last.split()[:-1])
+        lines[-1] = last + ellipsis
+
     return lines[:2]
 
 

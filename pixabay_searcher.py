@@ -142,5 +142,24 @@ def search_with_clip_validation(intent_result, article=None):
             break
 
     # All loops exhausted — use best available image (never skip article)
+    # If every Pixabay download failed (best_url is still None), run one
+    # broad safe-fallback search so we never return a completely blank image.
+    if best_url is None:
+        print("  All specific searches failed — trying broad fallback")
+        for fallback_query in ["world news event", "global politics", "city crowd"]:
+            for img_url in _search_pixabay([fallback_query]):
+                path = _download_tmp(img_url)
+                if not path:
+                    continue
+                try:
+                    score = _clip_score(path, [fallback_query])
+                    if score > best_score:
+                        best_score = score
+                        best_url   = img_url
+                finally:
+                    _cleanup(path)
+            if best_url:
+                break
+
     print(f"  Best available image: CLIP={best_score:.3f} after {MAX_RETRY_LOOPS} retries")
     return best_url, best_score, MAX_RETRY_LOOPS
