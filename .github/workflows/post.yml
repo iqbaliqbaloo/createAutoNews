@@ -49,6 +49,10 @@ jobs:
           restore-keys: |
             pipeline-state-
 
+      # ── Ensure data/ always exists so cache save never fails ────────────
+      - name: Create data directory
+        run: mkdir -p data
+
       # ── System fonts ─────────────────────────────────────────────────────
       - name: Install fonts
         run: |
