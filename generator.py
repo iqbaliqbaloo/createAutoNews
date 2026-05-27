@@ -3,7 +3,7 @@ import re
 import requests
 import tempfile
 from dotenv import load_dotenv
-from PIL import Image, ImageDraw
+from PIL import Image, ImageDraw, ImageFont
 
 from sentence_transformers import SentenceTransformer
 from sklearn.metrics.pairwise import cosine_similarity
@@ -41,22 +41,70 @@ def clip_score(text, image_path):
 
 
 # ─────────────────────────────
-# POST GENERATOR (FIXED)
+# GROQ-POWERED POST GENERATOR
 # ─────────────────────────────
+def _generate_with_groq(title, summary, source):
+    keys = [os.getenv("GROQ_API_KEY"), os.getenv("GROQ_API_KEY_2")]
+    for key in keys:
+        if not key:
+            continue
+        try:
+            from groq import Groq
+            client = Groq(api_key=key)
+            tag = "Pakistan" if source == "pakistan" else "World"
+            resp = client.chat.completions.create(
+                model="llama3-8b-8192",
+                messages=[{
+                    "role": "user",
+                    "content": (
+                        f"Write a short, engaging Facebook post about this {tag} news story.\n"
+                        f"Rules:\n"
+                        f"- 2-3 sentences only\n"
+                        f"- Open with a strong attention-grabbing hook\n"
+                        f"- Include the key facts\n"
+                        f"- End with 4-5 relevant hashtags including #VisionaryMinds\n"
+                        f"- No emojis\n"
+                        f"- Plain text only\n\n"
+                        f"Title: {title}\n"
+                        f"Summary: {summary[:250]}"
+                    )
+                }],
+                max_tokens=220,
+                temperature=0.7,
+            )
+            text = resp.choices[0].message.content.strip()
+            if text:
+                return text
+        except Exception as e:
+            print(f"Groq error: {e}")
+    return None
+
+
 def generate_post(article):
 
-    title = article.get("title", "")
+    title   = article.get("title", "")
     summary = article.get("summary", "")
-    source = article.get("source_type", "world")
+    source  = article.get("source_type", "world")
 
     if not title or not summary:
         return None
 
+    post_text = _generate_with_groq(title, summary, source)
+
+    if not post_text:
+        tag   = "#PakistanNews" if source == "pakistan" else "#WorldNews"
+        short = summary[:200].rsplit(" ", 1)[0]
+        post_text = (
+            f"{title}\n\n"
+            f"{short}...\n\n"
+            f"{tag} #BreakingNews #VisionaryMinds"
+        )
+
     return {
-        "post_text": f"{title}\n\n{summary[:300]}...",
-        "image_keywords": f"{title} {summary[:120]}",
+        "post_text":      post_text,
+        "image_keywords": f"{title} {summary[:80]}",
         "image_headline": title,
-        "source_type": source
+        "source_type":    source,
     }
 
 
@@ -93,28 +141,77 @@ def safe_download(url):
 # ─────────────────────────────
 # IMAGE OVERLAY
 # ─────────────────────────────
+def _load_fonts():
+    paths = [
+        "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
+        "/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf",
+        "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+    ]
+    for p in paths:
+        try:
+            return ImageFont.truetype(p, 28), ImageFont.truetype(p, 44)
+        except OSError:
+            continue
+    return ImageFont.load_default(), ImageFont.load_default()
+
+
+def _wrap_text(draw, text, font, max_width):
+    words = text.split()
+    lines, current = [], []
+    for word in words:
+        test = " ".join(current + [word])
+        w = draw.textbbox((0, 0), test, font=font)[2]
+        if w <= max_width:
+            current.append(word)
+        else:
+            if current:
+                lines.append(" ".join(current))
+            current = [word]
+    if current:
+        lines.append(" ".join(current))
+    return lines[:3]
+
+
 def add_text_overlay(image_path, headline, source_type="world", is_breaking=False):
 
     try:
         img = Image.open(image_path).convert("RGB")
         img = img.resize((1200, 630))
 
+        font_tag, font_headline = _load_fonts()
+
+        brand_color = (0, 160, 72) if source_type == "pakistan" else (210, 30, 30)
+        tag = "PAKISTAN NEWS" if source_type == "pakistan" else "WORLD NEWS"
+
+        # ── semi-transparent dark gradient at bottom ──────────────
+        rgba = img.convert("RGBA")
+        overlay = Image.new("RGBA", (1200, 630), (0, 0, 0, 0))
+        ov = ImageDraw.Draw(overlay)
+        ov.rectangle([(0, 390), (1200, 630)], fill=(0, 0, 0, 185))
+        img = Image.alpha_composite(rgba, overlay).convert("RGB")
         draw = ImageDraw.Draw(img)
 
-        tag = "PAKISTAN NEWS" if source_type == "pakistan" else "WORLD NEWS"
-        color = (0, 160, 72) if source_type == "pakistan" else (210, 30, 30)
-
-        draw.rectangle([(0, 0), (1200, 50)], fill=(0, 0, 0))
-        draw.text((20, 15), tag, fill=color)
+        # ── top bar ───────────────────────────────────────────────
+        draw.rectangle([(0, 0), (1200, 58)], fill=(0, 0, 0))
+        draw.text((20, 14), tag, fill=brand_color, font=font_tag)
 
         if is_breaking:
-            draw.text((250, 15), "BREAKING", fill=(255, 0, 0))
+            draw.text((310, 14), "● BREAKING", fill=(255, 80, 80), font=font_tag)
 
-        draw.text((40, 500), headline[:100], fill="white")
+        # VisionaryMinds — right-aligned in top bar
+        vm = "VisionaryMinds"
+        vm_w = draw.textbbox((0, 0), vm, font=font_tag)[2]
+        draw.text((1200 - vm_w - 20, 14), vm, fill=(255, 255, 255), font=font_tag)
+
+        # ── wrapped headline at bottom ────────────────────────────
+        lines = _wrap_text(draw, headline, font_headline, 1120)
+        y = 415
+        for line in lines:
+            draw.text((40, y), line, fill="white", font=font_headline)
+            y += 54
 
         tmp = tempfile.NamedTemporaryFile(delete=False, suffix=".jpg")
         img.save(tmp.name, "JPEG", quality=95)
-
         return tmp.name
 
     except Exception as e:
@@ -229,12 +326,9 @@ def generate_image(keywords, headline, source_type="world", is_breaking=False):
 
     print("❌ No good match → fallback image")
 
-    # fallback image (always safe)
+    # dark slate background — still gets the full overlay treatment
     img = Image.new("RGB", (1200, 630), (20, 20, 20))
-    draw = ImageDraw.Draw(img)
-    draw.text((50, 300), headline[:100], fill="white")
-
     tmp = tempfile.NamedTemporaryFile(delete=False, suffix=".jpg")
     img.save(tmp.name, "JPEG", quality=95)
 
-    return tmp.name
+    return add_text_overlay(tmp.name, headline, source_type, is_breaking)

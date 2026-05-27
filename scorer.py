@@ -74,7 +74,7 @@ def score_article(article, trending_topics=None):
         level = 1
     elif score > 60:
         level = 2
-    elif score > 40:
+    elif score >= 40:
         level = 3
     else:
         level = 5

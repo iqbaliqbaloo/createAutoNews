@@ -104,7 +104,9 @@ def fetch_articles():
 
             seen_urls.add(link)
 
-            title = clean_text(entry.title)
+            title = clean_text(getattr(entry, "title", "") or "")
+            if not title:
+                continue
             summary = clean_text(entry.get("summary", title))
 
             domain = urlparse(url).netloc
