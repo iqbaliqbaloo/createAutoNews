@@ -98,7 +98,7 @@ def post_to_facebook(text, image_path=None):
 
         error = result.get("error", {})
         code  = error.get("code", 0)
-        if code in {190, 102, 200, 467, 463, 460}:
+        if code in {190, 102, 467, 463, 460}:
             print(f"FATAL Facebook error (code {code}) — update FB_PAGE_TOKEN")
             return None
 
