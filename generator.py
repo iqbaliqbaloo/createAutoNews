@@ -1,20 +1,17 @@
 import os
 import re
-import json
-import time
 import requests
 import tempfile
 import textwrap
 from dotenv import load_dotenv
 from PIL import Image, ImageDraw, ImageFont
 
-from sentence_transformers import SentenceTransformer
-from sklearn.metrics.pairwise import cosine_similarity
+from sentence_transformers import SentenceTransformer, util
 
 load_dotenv()
 
 # ─────────────────────────────────────────────
-# CLIP MODEL (GLOBAL LOAD)
+# CLIP MODEL (GLOBAL)
 # ─────────────────────────────────────────────
 clip_model = SentenceTransformer("clip-ViT-B-32")
 
@@ -28,60 +25,16 @@ def clip_score(text, image_path):
     try:
         image = Image.open(image_path).convert("RGB")
 
-        text_emb = clip_model.encode([text], convert_to_tensor=True)
-        img_emb  = clip_model.encode([image], convert_to_tensor=True)
+        text_emb = clip_model.encode(text, convert_to_tensor=True)
+        img_emb  = clip_model.encode(image, convert_to_tensor=True)
 
-        score = cosine_similarity(
-            text_emb.cpu().numpy(),
-            img_emb.cpu().numpy()
-        )[0][0]
+        score = util.cos_sim(text_emb, img_emb).item()
 
         return float(score)
 
     except Exception as e:
-        print(f"CLIP error: {e}")
+        print("CLIP error:", e)
         return 0.0
-
-
-# ─────────────────────────────────────────────
-# IMGBB UPLOAD
-# ─────────────────────────────────────────────
-def upload_to_imgbb(image_path, retries=3):
-
-    if not image_path or not os.path.exists(image_path):
-        return None
-
-    api_key = os.getenv("IMGBB_API_KEY")
-    if not api_key:
-        print("❌ IMGBB key missing")
-        return None
-
-    for attempt in range(retries):
-        try:
-            print(f"  imgbb upload attempt {attempt+1}...")
-
-            with open(image_path, "rb") as f:
-                r = requests.post(
-                    "https://api.imgbb.com/1/upload",
-                    data={
-                        "key": api_key,
-                        "expiration": 3600
-                    },
-                    files={"image": f},
-                    timeout=30
-                )
-
-            data = r.json()
-
-            if data.get("success"):
-                print("  imgbb upload success")
-                return data["data"]["url"]
-
-        except Exception as e:
-            print(f"  imgbb error: {e}")
-            time.sleep(2)
-
-    return None
 
 
 # ─────────────────────────────────────────────
@@ -126,7 +79,7 @@ def add_text_overlay(image_path, headline, source_type="world", is_breaking=Fals
 
 
 # ─────────────────────────────────────────────
-# MAIN IMAGE GENERATION (CLIP FIX APPLIED)
+# IMAGE GENERATION (CLIP MATCHED + FIXED)
 # ─────────────────────────────────────────────
 def generate_image(keywords, headline, source_type="world", is_breaking=False):
 
@@ -137,6 +90,7 @@ def generate_image(keywords, headline, source_type="world", is_breaking=False):
     words = clean.split()
 
     search_terms = []
+
     if len(words) >= 3:
         search_terms.append(" ".join(words[:3]))
     if len(words) >= 2:
@@ -149,6 +103,12 @@ def generate_image(keywords, headline, source_type="world", is_breaking=False):
         else "global news crisis war"
     )
 
+    best_img = None
+    best_score = -1
+
+    # ─────────────────────────────────────
+    # SEARCH MULTIPLE PIXABAY TERMS
+    # ─────────────────────────────────────
     for term in search_terms:
 
         try:
@@ -168,44 +128,57 @@ def generate_image(keywords, headline, source_type="world", is_breaking=False):
             if not data.get("hits"):
                 continue
 
-            # ─────────────────────────────────────
-            # CLIP RANKING (FIXED CORE LOGIC)
-            # ─────────────────────────────────────
             hits = data["hits"][:5]
 
-            best_img = None
-            best_score = -1
+            temp_files = []
 
+            # ─────────────────────────────────────
+            # CLIP RANKING (CORE FIX)
+            # ─────────────────────────────────────
             for hit in hits:
-                img_url = hit["largeImageURL"]
-                img_data = requests.get(img_url, timeout=15).content
 
-                tmp = tempfile.NamedTemporaryFile(delete=False, suffix=".jpg")
-                tmp.write(img_data)
-                tmp.close()
+                try:
+                    img_url = hit["largeImageURL"]
+                    img_data = requests.get(img_url, timeout=15).content
 
-                score = clip_score(keywords + " " + headline, tmp.name)
+                    tmp = tempfile.NamedTemporaryFile(delete=False, suffix=".jpg")
+                    tmp.write(img_data)
+                    tmp.close()
 
-                print(f"  CLIP score: {score}")
+                    temp_files.append(tmp.name)
 
-                if score > best_score:
-                    best_score = score
-                    best_img = tmp.name
+                    # IMPORTANT: use headline ONLY for CLIP stability
+                    score = clip_score(headline, tmp.name)
 
-            # reject bad matches
-            if best_score < 0.25:
-                print("❌ No good image match found")
-                continue
+                    print(f"  CLIP score: {score:.3f}")
 
-            return add_text_overlay(
-                best_img,
-                headline,
-                source_type,
-                is_breaking
-            )
+                    if score > best_score:
+                        best_score = score
+                        best_img = tmp.name
+
+                except Exception as e:
+                    print("Image download error:", e)
+                    continue
+
+            # cleanup weaker images
+            for path in temp_files:
+                if path != best_img:
+                    try:
+                        os.unlink(path)
+                    except:
+                        pass
+
+            # strong threshold (FIXED)
+            if best_score >= 0.32 and best_img:
+                return add_text_overlay(
+                    best_img,
+                    headline,
+                    source_type,
+                    is_breaking
+                )
 
         except Exception as e:
-            print("Image error:", e)
+            print("Pixabay error:", e)
             continue
 
     return None

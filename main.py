@@ -7,7 +7,6 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-# UTF-8 safe output (GitHub Actions fix)
 try:
     sys.stdout.reconfigure(encoding="utf-8")
 except Exception:
@@ -24,17 +23,19 @@ from db import (
 from fetcher import fetch_articles
 from deduplicator import deduplicate
 from scorer import score_article
-from generator import generate_post, generate_image
+from generator import generate_post, generate_image, clip_score
 from publisher import post_to_facebook, post_to_instagram
 from trending import get_trending_topics
 
 
+# ─────────────────────────────────────────────
 PKT = pytz.timezone("Asia/Karachi")
 
 FB_DAILY_LIMIT = 10
-POST_DELAY_SECONDS = 60   # 🔥 FIX: prevent burst posting
+POST_DELAY_SECONDS = 60
 
 
+# ─────────────────────────────────────────────
 def run_pipeline():
 
     now = datetime.now(PKT)
@@ -43,11 +44,11 @@ def run_pipeline():
     print(f"PIPELINE START: {now.strftime('%d %b %Y %I:%M %p PKT')}")
     print("=" * 60)
 
-    # ---------------- TRENDING ---------------- #
+    # ─── TRENDING ─────────────────────────────
     print("\nFetching trending topics...")
     trending_topics = get_trending_topics()
 
-    # ---------------- DB INIT ---------------- #
+    # ─── DB ───────────────────────────────────
     conn = init_db()
 
     try:
@@ -55,21 +56,21 @@ def run_pipeline():
         print(f"\nFacebook today: {fb_count}/{FB_DAILY_LIMIT}")
 
         if fb_count >= FB_DAILY_LIMIT:
-            print("Daily limit reached. Exiting.")
+            print("Daily limit reached.")
             return
 
-        # ---------------- FETCH ---------------- #
+        # ─── FETCH ────────────────────────────
         articles = fetch_articles()
 
         if not articles:
             print("No articles found.")
             return
 
-        # ---------------- DEDUP ---------------- #
+        # ─── DEDUP ────────────────────────────
         merged = deduplicate(articles)
         print(f"Unique stories: {len(merged)}")
 
-        # ---------------- FILTER + SCORE ---------------- #
+        # ─── FILTER + SCORE ────────────────────
         fresh = []
 
         for a in merged:
@@ -94,10 +95,9 @@ def run_pipeline():
         print(f"\nQualified articles: {len(fresh)}")
 
         if not fresh:
-            print("No strong articles found.")
             return
 
-        # ---------------- POST LOOP ---------------- #
+        # ─── MAIN LOOP ────────────────────────
         for article in fresh:
 
             if fb_count >= FB_DAILY_LIMIT:
@@ -107,7 +107,7 @@ def run_pipeline():
             print(f"Processing: {article['title']}")
             print(f"Score: {article['score']} | Level: {article['level']}")
 
-            # ---------- TEXT GENERATION ---------- #
+            # ─── GENERATE POST ────────────────
             content = generate_post(article)
 
             if not content:
@@ -116,7 +116,7 @@ def run_pipeline():
 
             print("Post generated ✔")
 
-            # ---------- IMAGE GENERATION ---------- #
+            # ─── GENERATE IMAGE ───────────────
             image_path = None
 
             try:
@@ -127,13 +127,31 @@ def run_pipeline():
                     article["level"] == 1
                 )
             except Exception as e:
-                print(f"Image error: {e}")
+                print("Image error:", e)
 
             if not image_path:
-                print("❌ Image failed")
+                print("❌ Image generation failed")
                 continue
 
-            # ---------- FACEBOOK POST ---------- #
+            # ─────────────────────────────────────────
+            # 🔥 FINAL CLIP SAFETY CHECK (IMPORTANT)
+            # ─────────────────────────────────────────
+            try:
+                score = clip_score(content["post_text"], image_path)
+                print(f"Final CLIP score: {score:.3f}")
+
+                if score < 0.30:
+                    print("❌ Image mismatch detected — skipping post")
+                    try:
+                        os.unlink(image_path)
+                    except:
+                        pass
+                    continue
+
+            except Exception as e:
+                print("CLIP check failed:", e)
+
+            # ─── FACEBOOK POST ─────────────────
             fb_result = post_to_facebook(content["post_text"], image_path)
 
             if fb_result is None:
@@ -147,30 +165,35 @@ def run_pipeline():
 
                 print(f"[FB {fb_count}/{FB_DAILY_LIMIT}] Posted ✔")
 
-                # ---------- INSTAGRAM ---------- #
+                # ─── INSTAGRAM ───────────────
                 ig_result = post_to_instagram(content["post_text"], image_path)
 
                 if ig_result:
                     mark_posted(conn, article["hash"], article["title"], "instagram")
                     print("[IG] Posted ✔")
 
-                # ---------- IMPORTANT FIX: delay between posts ----------
+                # ─── CLEANUP ────────────────
+                try:
+                    os.unlink(image_path)
+                except:
+                    pass
+
+                # ─── DELAY (IMPORTANT) ──────
                 if fb_count < FB_DAILY_LIMIT:
                     print(f"Sleeping {POST_DELAY_SECONDS}s before next post...")
                     time.sleep(POST_DELAY_SECONDS)
 
-                break  # important: prevents multiple posts per run
+                break
 
             else:
                 print("FB failed, trying next article...")
 
-            # cleanup image
-            try:
-                os.unlink(image_path)
-            except:
-                pass
+                try:
+                    os.unlink(image_path)
+                except:
+                    pass
 
-        # ---------------- SUMMARY ---------------- #
+        # ─── SUMMARY ───────────────────────────
         print("\n" + "=" * 60)
         print(f"FINAL FB COUNT: {fb_count}/{FB_DAILY_LIMIT}")
         print(f"END TIME: {datetime.now(PKT).strftime('%I:%M %p PKT')}")
