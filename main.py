@@ -1,61 +1,77 @@
 import os
 import sys
 import pytz
+import time
 from datetime import datetime
 from dotenv import load_dotenv
 
-try:
-    sys.stdout.reconfigure(encoding="utf-8")
-except AttributeError:
-    pass
-
 load_dotenv()
 
-from db           import init_db, already_posted, title_already_posted, mark_posted, get_today_count
-from fetcher      import fetch_articles
-from deduplicator import deduplicate
-from scorer       import score_article
-from generator    import generate_post, generate_image
-from publisher    import post_to_facebook, post_to_instagram
-from trending     import get_trending_topics
+# UTF-8 safe output (GitHub Actions fix)
+try:
+    sys.stdout.reconfigure(encoding="utf-8")
+except Exception:
+    pass
 
-PKT            = pytz.timezone("Asia/Karachi")
+from db import (
+    init_db,
+    already_posted,
+    title_already_posted,
+    mark_posted,
+    get_today_count
+)
+
+from fetcher import fetch_articles
+from deduplicator import deduplicate
+from scorer import score_article
+from generator import generate_post, generate_image
+from publisher import post_to_facebook, post_to_instagram
+from trending import get_trending_topics
+
+
+PKT = pytz.timezone("Asia/Karachi")
+
 FB_DAILY_LIMIT = 10
-MIN_SCORE      = 40   # 🔥 IMPORTANT FIX
+POST_DELAY_SECONDS = 60   # 🔥 FIX: prevent burst posting
 
 
 def run_pipeline():
 
     now = datetime.now(PKT)
-    print("\n" + "=" * 50)
-    print(f"Pipeline started: {now.strftime('%d %b %Y %I:%M %p PKT')}")
-    print("=" * 50)
 
+    print("\n" + "=" * 60)
+    print(f"PIPELINE START: {now.strftime('%d %b %Y %I:%M %p PKT')}")
+    print("=" * 60)
+
+    # ---------------- TRENDING ---------------- #
     print("\nFetching trending topics...")
     trending_topics = get_trending_topics()
 
+    # ---------------- DB INIT ---------------- #
     conn = init_db()
 
     try:
-
         fb_count = get_today_count(conn, "facebook")
-        print(f"FB: {fb_count}/{FB_DAILY_LIMIT}")
+        print(f"\nFacebook today: {fb_count}/{FB_DAILY_LIMIT}")
 
         if fb_count >= FB_DAILY_LIMIT:
-            print("Daily FB limit reached. Stopping.")
+            print("Daily limit reached. Exiting.")
             return
 
+        # ---------------- FETCH ---------------- #
         articles = fetch_articles()
 
         if not articles:
-            print("No articles fetched.")
+            print("No articles found.")
             return
 
+        # ---------------- DEDUP ---------------- #
         merged = deduplicate(articles)
+        print(f"Unique stories: {len(merged)}")
 
+        # ---------------- FILTER + SCORE ---------------- #
         fresh = []
 
-        # ───────────── FILTER STAGE ─────────────
         for a in merged:
 
             if already_posted(conn, a["hash"]):
@@ -71,37 +87,36 @@ def run_pipeline():
 
             a["score"] = score
             a["level"] = level
-
-            if score >= MIN_SCORE:   # 🔥 FIXED FILTER
-                fresh.append(a)
+            fresh.append(a)
 
         fresh.sort(key=lambda x: x["score"], reverse=True)
 
-        print(f"Qualified articles: {len(fresh)}")
+        print(f"\nQualified articles: {len(fresh)}")
 
         if not fresh:
-            print("No important articles found.")
+            print("No strong articles found.")
             return
 
-        # ───────────── POST LOOP ─────────────
+        # ---------------- POST LOOP ---------------- #
         for article in fresh:
 
             if fb_count >= FB_DAILY_LIMIT:
                 break
 
-            print("\nProcessing:", article["title"])
-            print(f"Score: {article['score']} | Type: {article['source_type']}")
+            print("\n" + "-" * 60)
+            print(f"Processing: {article['title']}")
+            print(f"Score: {article['score']} | Level: {article['level']}")
 
-            # ───── AI GENERATION ─────
+            # ---------- TEXT GENERATION ---------- #
             content = generate_post(article)
 
             if not content:
-                print("AI failed → skipping article")
+                print("❌ Post generation failed")
                 continue
 
-            print("Post:", content.get("post_text", "")[:100])
+            print("Post generated ✔")
 
-            # ───── IMAGE GENERATION ─────
+            # ---------- IMAGE GENERATION ---------- #
             image_path = None
 
             try:
@@ -109,23 +124,20 @@ def run_pipeline():
                     content["image_keywords"],
                     content.get("image_headline", article["title"]),
                     article["source_type"],
-                    article.get("level", 3) == 1
+                    article["level"] == 1
                 )
             except Exception as e:
-                print("Image error:", e)
+                print(f"Image error: {e}")
 
-            # 🔥 FIX: TEXT-ONLY fallback
             if not image_path:
-                print("No image → posting text only")
+                print("❌ Image failed")
+                continue
 
-                fb_result = post_to_facebook(content["post_text"])
+            # ---------- FACEBOOK POST ---------- #
+            fb_result = post_to_facebook(content["post_text"], image_path)
 
-            else:
-                fb_result = post_to_facebook(content["post_text"], image_path)
-
-            # ───── FACEBOOK RESULT ─────
             if fb_result is None:
-                print("Fatal FB error → stopping pipeline")
+                print("❌ Fatal FB error (token issue)")
                 return
 
             if fb_result:
@@ -133,23 +145,36 @@ def run_pipeline():
                 mark_posted(conn, article["hash"], article["title"], "facebook")
                 fb_count += 1
 
-                print(f"[FB {fb_count}/{FB_DAILY_LIMIT}] Posted ✅")
+                print(f"[FB {fb_count}/{FB_DAILY_LIMIT}] Posted ✔")
 
-                # ───── INSTAGRAM ─────
+                # ---------- INSTAGRAM ---------- #
                 ig_result = post_to_instagram(content["post_text"], image_path)
 
                 if ig_result:
                     mark_posted(conn, article["hash"], article["title"], "instagram")
-                    print("[IG] Posted ✅")
+                    print("[IG] Posted ✔")
+
+                # ---------- IMPORTANT FIX: delay between posts ----------
+                if fb_count < FB_DAILY_LIMIT:
+                    print(f"Sleeping {POST_DELAY_SECONDS}s before next post...")
+                    time.sleep(POST_DELAY_SECONDS)
+
+                break  # important: prevents multiple posts per run
 
             else:
-                print("FB failed → continuing next article")
+                print("FB failed, trying next article...")
 
-        # ───────────── SUMMARY ─────────────
-        print("\n" + "=" * 50)
-        print(f"Facebook: {fb_count}/{FB_DAILY_LIMIT}")
-        print(f"Finished: {datetime.now(PKT).strftime('%I:%M %p PKT')}")
-        print("=" * 50)
+            # cleanup image
+            try:
+                os.unlink(image_path)
+            except:
+                pass
+
+        # ---------------- SUMMARY ---------------- #
+        print("\n" + "=" * 60)
+        print(f"FINAL FB COUNT: {fb_count}/{FB_DAILY_LIMIT}")
+        print(f"END TIME: {datetime.now(PKT).strftime('%I:%M %p PKT')}")
+        print("=" * 60)
 
     finally:
         conn.close()

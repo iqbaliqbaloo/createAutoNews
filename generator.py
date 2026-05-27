@@ -4,6 +4,8 @@ from langdetect import detect
 from dotenv import load_dotenv
 from PIL import Image, ImageDraw, ImageFont
 
+from clip_validator import image_matches_text
+
 load_dotenv()
 
 # ─── GROQ CLIENTS ─────────────────────────────────────────
@@ -47,17 +49,10 @@ def _text_width(draw, text, font):
         return draw.textsize(text, font=font)[0]
 
 
-def _draw_rounded_rect(draw, bbox, radius, fill):
-    try:
-        draw.rounded_rectangle(bbox, radius=radius, fill=fill)
-    except:
-        draw.rectangle(bbox, fill=fill)
-
-
-def _shadow_text(draw, pos, text, font, fill="white", shadow=(0, 0, 0)):
+def _shadow_text(draw, pos, text, font, fill="white"):
     x, y = pos
-    for dx, dy in [(-1,-1),(1,-1),(-1,1),(1,1),(0,2),(2,0)]:
-        draw.text((x+dx, y+dy), text, fill=shadow, font=font)
+    for dx, dy in [(-1,-1),(1,-1),(-1,1),(1,1),(0,2)]:
+        draw.text((x+dx, y+dy), text, fill="black", font=font)
     draw.text((x, y), text, fill=fill, font=font)
 
 
@@ -71,11 +66,7 @@ def detect_language(article):
         return "en"
 
 
-# ─── SAFE HELPERS ─────────────────────────────────────────
-
-def safe_get(article, key, default=""):
-    return article.get(key, default) or default
-
+# ─── SAFE JSON PARSER ────────────────────────────────────
 
 def safe_json(text):
     try:
@@ -94,14 +85,12 @@ def get_post_length(score, level):
         return "6-10 sentences major breaking news"
     elif level == 2:
         return "5-7 sentences important news"
-    else:
-        return "3-5 sentences short update"
+    return "3-5 sentences short update"
 
 
 # ─── IMAGE OVERLAY ───────────────────────────────────────
 
 def add_text_overlay(image_path, headline, source_type="world", is_breaking=False):
-    tmp_path = None
     try:
         img = Image.open(image_path).convert("RGB")
         img = img.resize((1200, 630), Image.LANCZOS)
@@ -111,32 +100,32 @@ def add_text_overlay(image_path, headline, source_type="world", is_breaking=Fals
         tag    = "PAKISTAN NEWS" if source_type == "pakistan" else "WORLD NEWS"
 
         font_tag = _load_font(22, True)
-        font_h   = _load_font(46, True)
+        font_h   = _load_font(44, True)
 
         draw = ImageDraw.Draw(img)
 
+        # top bar
         draw.rectangle([(0,0),(w,50)], fill=(0,0,0))
-
-        draw.text((20, 12), tag, fill=accent, font=font_tag)
+        draw.text((20,12), tag, fill=accent, font=font_tag)
 
         if is_breaking:
-            draw.text((250, 12), "BREAKING", fill=(255,0,0), font=font_tag)
+            draw.text((250,12), "BREAKING", fill=(255,0,0), font=font_tag)
 
+        # headline
         y = h - 200
-        wrapped = textwrap.wrap(headline, width=40)[:3]
+        wrapped = textwrap.wrap(headline, width=38)[:3]
 
         for line in wrapped:
             _shadow_text(draw, (20, y), line, font_h)
             y += 55
 
         out = tempfile.NamedTemporaryFile(delete=False, suffix=".jpg")
-        tmp_path = out.name
-        img.save(tmp_path, "JPEG", quality=95)
-        out.close()
+        img.save(out.name, "JPEG", quality=95)
 
-        return tmp_path
+        return out.name
 
-    except:
+    except Exception as e:
+        print("Overlay error:", e)
         return image_path
 
 
@@ -159,37 +148,31 @@ def generate_post(article):
     if not article:
         return None
 
-    title   = safe_get(article, "title")
-    summary = safe_get(article, "summary")
-    source  = article.get("source_type", "world")
-
-    if not title or not summary:
-        return None
+    title   = article.get("title","")
+    summary = article.get("summary","")
+    source  = article.get("source_type","world")
 
     lang = detect_language(article)
-
-    instruction = "Translate to English if needed." if lang != "en" else "English article."
+    instruction = "Translate to English" if lang != "en" else "English article"
 
     score = article.get("score", 50)
     level = article.get("level", 3)
 
     post_length = get_post_length(score, level)
 
-    source_label = "Pakistan" if source == "pakistan" else "World"
-
     prompt = f"""
-Write a professional news post.
+Write professional news post.
 
 TITLE: {title}
 DETAILS: {summary[:600]}
-SOURCE: {source_label}
+SOURCE: {source}
 {instruction}
 
 RULES:
 - factual only
 - strong opening line
 - {post_length}
-- hashtags at end (5-7)
+- hashtags at end
 - no fake info
 
 Return JSON ONLY:
@@ -211,20 +194,15 @@ Return JSON ONLY:
                 text = _call_groq(client, prompt)
                 result = safe_json(text)
 
-                if not result:
-                    continue
-
-                if not result.get("post_text"):
-                    continue
-
-                return result
+                if result and result.get("post_text"):
+                    return result
 
             except RateLimitError:
                 break
             except:
                 time.sleep(2)
 
-    # fallback (IMPORTANT)
+    # fallback
     return {
         "post_text": f"{title}\n\n{summary[:200]}",
         "image_keywords": "news update world report",
@@ -232,14 +210,13 @@ Return JSON ONLY:
     }
 
 
-# ─── IMAGE GENERATION ────────────────────────────────────
+# ─── IMAGE GENERATION (FIXED + CLIP CHECK) ───────────────
 
 def generate_image(keywords, headline, source_type="world", is_breaking=False):
 
     clean = keywords.lower()
-
     clean = re.sub(r"\b(news|breaking|media|photo|image|scene)\b", "", clean)
-    clean = re.sub(r"\s+", " ", clean).strip()
+    clean = " ".join(clean.split())
 
     words = clean.split()
 
@@ -247,10 +224,8 @@ def generate_image(keywords, headline, source_type="world", is_breaking=False):
 
     if len(words) >= 3:
         search_terms.append(" ".join(words[:3]))
-
     if len(words) >= 2:
         search_terms.append(" ".join(words[:2]))
-
     if words:
         search_terms.append(words[0])
 
@@ -275,14 +250,23 @@ def generate_image(keywords, headline, source_type="world", is_breaking=False):
             )
 
             data = r.json()
-            if not data.get("hits"):
+            hits = data.get("hits", [])
+
+            if not hits:
                 continue
 
-            hit = data["hits"][0]   # FIXED (no randomness)
+            # ── CLIP FILTER ──
+            best_url = None
+            for h in hits[:5]:
+                url = h["largeImageURL"]
+                if image_matches_text(url, headline):
+                    best_url = url
+                    break
 
-            img_url = hit["largeImageURL"]
+            if not best_url:
+                continue
 
-            img_data = requests.get(img_url, timeout=15).content
+            img_data = requests.get(best_url, timeout=15).content
 
             tmp = tempfile.NamedTemporaryFile(delete=False, suffix=".jpg")
             tmp.write(img_data)
@@ -290,7 +274,8 @@ def generate_image(keywords, headline, source_type="world", is_breaking=False):
 
             return add_text_overlay(tmp.name, headline, source_type, is_breaking)
 
-        except:
+        except Exception as e:
+            print("Image error:", e)
             continue
 
     return None
