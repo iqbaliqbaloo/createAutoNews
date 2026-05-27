@@ -6,31 +6,42 @@ from sklearn.metrics.pairwise import cosine_similarity
 from deduplicator import model as _minilm
 
 ALLOWED_TOPICS = [
-    "war military conflict troops soldiers combat battlefield",
-    "politics government parliament election president diplomacy",
-    "economy finance stock market inflation trade recession banking",
-    "natural disaster earthquake flood hurricane emergency rescue",
-    "sports football cricket tennis match championship tournament",
-    "international relations treaty sanctions geopolitics",
-    "terrorism bombing explosion attack security threat",
-    "climate change environment pollution energy crisis",
-    "human rights protest demonstration civil unrest",
-    "health pandemic disease outbreak medical emergency",
-    "nuclear weapons missile defense military technology",
-    "crime law court justice police investigation arrest",
-    "humanitarian crisis refugees aid displacement",
+    # War / military
+    "troops killed military attack war soldiers conflict zone airstrike",
+    "missile strike army navy warfare weapons defense combat",
+    # Politics / diplomacy
+    "president prime minister government parliament election vote sanctions",
+    "diplomatic talks peace deal treaty summit United Nations",
+    # Economy / finance
+    "stock market inflation recession trade tariff GDP unemployment central bank",
+    "oil prices currency crisis debt bonds economic growth",
+    # Natural disasters / humanitarian
+    "earthquake flood hurricane wildfire disaster victims rescue emergency",
+    "humanitarian crisis refugees displaced civilians famine aid",
+    # Health / pandemic
+    "disease outbreak pandemic virus deaths hospital WHO health emergency",
+    "Ebola cholera epidemic casualties medical response",
+    # Crime / security / terrorism
+    "attack bombing explosion arrested killed police investigation FBI",
+    "terrorism extremist militant threat national security crime",
+    # Geopolitics / international
+    "Iran Russia China India nuclear deal agreement ceasefire occupation",
+    "Ukraine Gaza Israel Lebanon West Bank NATO alliance",
+    # Protest / civil unrest
+    "protest demonstration riot crackdown opposition rally arrests detained",
+    # Environment / climate
+    "climate change carbon emissions fossil fuels warming drought flooding",
+    # Sports (competitive / major events only)
+    "World Cup Olympics championship match tournament final league squad",
 ]
 
 BLOCKED_TOPICS = [
-    "celebrity gossip entertainment tabloid rumor dating breakup",
-    "pornography adult content explicit sexual material",
-    "social media viral meme tiktok influencer challenge trend",
-    "advertisement promotion marketing sale discount offer",
-    "horoscope astrology zodiac prediction fortune telling",
-    "cooking recipe food diet nutrition lifestyle tips",
-    "fashion beauty makeup cosmetics style trends",
-    "gaming video games esports streamer entertainment",
-    "cryptocurrency bitcoin nft blockchain investment scheme",
+    "celebrity gossip Taylor Swift Harry Styles pop star dating rumors",
+    "fashion beauty makeup skincare cosmetics diet tips lifestyle",
+    "cooking recipe food nutrition wellness horoscope astrology",
+    "social media viral tiktok influencer meme challenge entertainment",
+    "reality TV show streaming Netflix drama comedy actor awards",
+    "cryptocurrency bitcoin NFT investment scheme promotion advertisement",
 ]
 
 _allowed_embeddings = None
@@ -69,10 +80,10 @@ def passes_semantic_filter(article_embedding):
     max_blocked = float(np.max(blocked_scores))
     max_allowed = float(np.max(allowed_scores))
 
-    if max_blocked > 0.75:
+    if max_blocked > 0.45:
         return False, f"blocked topic sim={max_blocked:.2f}"
 
-    if max_allowed > 0.70:
+    if max_allowed > 0.25:
         return True, f"allowed topic sim={max_allowed:.2f}"
 
     return False, f"low relevance (allowed_max={max_allowed:.2f})"
