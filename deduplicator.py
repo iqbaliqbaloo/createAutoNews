@@ -23,7 +23,7 @@ def safe_get(article, key):
 
 # ─── MAIN DEDUP FUNCTION ──────────────────────────────────
 
-def deduplicate(articles, threshold=0.82):
+def deduplicate(articles, threshold=0.85):
 
     if not articles:
         return []
@@ -70,8 +70,11 @@ def deduplicate(articles, threshold=0.82):
 
         visited.update(cluster)
 
-        # Step 4: Pick BEST article in cluster
-        best_idx = max(cluster, key=lambda k: len(texts[k]))
+        # Step 4: Pick BEST article in cluster (highest trust_score, then longest text)
+        best_idx = max(cluster, key=lambda k: (
+            valid_articles[k].get("trust_score", 0),
+            len(texts[k]),
+        ))
 
         best = dict(valid_articles[best_idx])  # COPY (important fix)
 

@@ -2,13 +2,13 @@ name: News Autoposter
 
 on:
   schedule:
-    - cron: '0 */2 * * *'   # cleaner: every 2 hours
+    - cron: '0 */2 * * *'   # every 2 hours
   workflow_dispatch:
 
 jobs:
   post:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 25
 
     concurrency:
       group: autoposter
@@ -24,18 +24,14 @@ jobs:
           python-version: '3.11'
           cache: 'pip'
 
-      # ─────────────────────────────
-      # FIX 1: Stable HuggingFace cache
-      # ─────────────────────────────
+      # ── ML model cache (MiniLM + CLIP) ──────────────────────────────────
       - name: Cache ML models
         uses: actions/cache@v4
         with:
           path: ~/.cache/huggingface
-          key: hf-minilm-v1
+          key: hf-models-v2
 
-      # ─────────────────────────────
-      # FIX 2: Stable DB persistence
-      # ─────────────────────────────
+      # ── SQLite DB persistence ────────────────────────────────────────────
       - name: Restore database
         uses: actions/cache@v4
         with:
@@ -44,30 +40,33 @@ jobs:
           restore-keys: |
             state-db-
 
-      # ─────────────────────────────
-      # FIX 3: System dependencies
-      # ─────────────────────────────
+      # ── Pipeline state files (topic memory, queue, results) ─────────────
+      - name: Restore pipeline state
+        uses: actions/cache@v4
+        with:
+          path: data/
+          key: pipeline-state-${{ github.run_id }}
+          restore-keys: |
+            pipeline-state-
+
+      # ── System fonts ─────────────────────────────────────────────────────
       - name: Install fonts
         run: |
-          sudo apt-get update
+          sudo apt-get update -qq
           sudo apt-get install -y fonts-liberation fonts-dejavu
 
-      # ─────────────────────────────
-      # Install Python deps
-      # ─────────────────────────────
+      # ── Python dependencies ───────────────────────────────────────────────
       - name: Install dependencies
         run: |
           pip install --upgrade pip
           pip install -r requirements.txt
 
-      # ─────────────────────────────
-      # FIX 4: Safe execution with retries
-      # ─────────────────────────────
-      - name: Run pipeline (with retry)
+      # ── Run pipeline (3 attempts with backoff) ───────────────────────────
+      - name: Run pipeline
         run: |
           for i in 1 2 3; do
-            echo "Run attempt $i"
-            python main.py && break || sleep 10
+            echo "=== Attempt $i ==="
+            python main.py && break || sleep 15
           done
         env:
           GROQ_API_KEY:    ${{ secrets.GROQ_API_KEY }}
@@ -81,9 +80,7 @@ jobs:
           FB_APP_SECRET:   ${{ secrets.FB_APP_SECRET }}
           TZ: Asia/Karachi
 
-      # ─────────────────────────────
-      # FIX 5: Save DB safely (overwrite stable key)
-      # ─────────────────────────────
+      # ── Persist DB ────────────────────────────────────────────────────────
       - name: Save database
         uses: actions/cache/save@v4
         with:
@@ -91,14 +88,21 @@ jobs:
           key: state-db-${{ github.run_id }}
         continue-on-error: true
 
-      # ─────────────────────────────
-      # FIX 6: Upload logs if failure
-      # ─────────────────────────────
-      - name: Upload logs (on failure)
+      # ── Persist pipeline state ────────────────────────────────────────────
+      - name: Save pipeline state
+        uses: actions/cache/save@v4
+        with:
+          path: data/
+          key: pipeline-state-${{ github.run_id }}
+        continue-on-error: true
+
+      # ── Upload logs on failure ────────────────────────────────────────────
+      - name: Upload debug artifacts
         if: failure()
         uses: actions/upload-artifact@v4
         with:
-          name: autoposter-logs
+          name: autoposter-debug
           path: |
             *.log
             state.db
+            data/

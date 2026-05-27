@@ -1,7 +1,6 @@
 import os
 import sys
 import pytz
-import time
 from datetime import datetime
 from dotenv import load_dotenv
 load_dotenv()
@@ -11,188 +10,278 @@ try:
 except Exception:
     pass
 
-from db import (
-    init_db,
-    already_posted,
-    title_already_posted,
-    mark_posted,
-    get_today_count
+# ── DB / infra (import order matters for shared model singletons) ──────────
+from db import init_db, already_posted, title_already_posted, mark_posted, get_today_count
+
+# ── Step 1: Fetch ─────────────────────────────────────────────────────────
+from fetcher import fetch_articles
+
+# ── Step 2: Fake news filter ──────────────────────────────────────────────
+from fake_news_filter import score_article as fake_news_score
+
+# ── Steps 3 & 4: Semantic filter + dedup (MiniLM model loaded here) ───────
+from deduplicator import deduplicate            # loads all-MiniLM-L6-v2
+from semantic_filter import embed_article, passes_semantic_filter
+
+# ── Steps 5 & 10: Intent + captions (loads CLIP via generator import) ─────
+from generator import clip_score               # loads clip-ViT-B-32
+from intent_classifier import classify_and_generate
+
+# ── Step 6: Topic memory ──────────────────────────────────────────────────
+from topic_memory import get_best_intent, mark_intent_posted
+
+# ── Steps 7 & 8: Scene selection + image search ───────────────────────────
+from pixabay_searcher import search_with_clip_validation
+
+# ── Step 9: Image composition ─────────────────────────────────────────────
+from image_composer import save_platform_images
+
+# ── Step 11: Scheduler queue ──────────────────────────────────────────────
+from scheduler_queue import (
+    get_platforms_ready,
+    mark_posted as queue_mark_posted,
 )
 
-from fetcher import fetch_articles
-from deduplicator import deduplicate
-from scorer import score_article
-from generator import generate_post, generate_image, clip_score
+# ── Step 12: Post + log ───────────────────────────────────────────────────
 from publisher import post_to_facebook, post_to_instagram
-from trending import get_trending_topics
+from results_logger import log_result
 
-
-# ─────────────────────────────────────────────
-PKT = pytz.timezone("Asia/Karachi")
-
+# ── Config ────────────────────────────────────────────────────────────────
+PKT            = pytz.timezone("Asia/Karachi")
 FB_DAILY_LIMIT = 10
-POST_DELAY_SECONDS = 60
+ARTICLE_CAP    = 30   # hard cap per run (Step 1)
+CLASSIFY_TOP   = 10   # classify top-N fresh articles for intent selection
 
 
-# ─────────────────────────────────────────────
+def _sep(char="─", width=60):
+    print(char * width)
+
+
 def run_pipeline():
-
     now = datetime.now(PKT)
-
-    print("\n" + "=" * 60)
+    print()
+    _sep("═")
     print(f"PIPELINE START: {now.strftime('%d %b %Y %I:%M %p PKT')}")
-    print("=" * 60)
+    _sep("═")
 
-    # ─── TRENDING ─────────────────────────────
-    print("\nFetching trending topics...")
-    trending_topics = get_trending_topics()
-
-    # ─── DB ───────────────────────────────────
     conn = init_db()
 
     try:
         fb_count = get_today_count(conn, "facebook")
-        print(f"\nFacebook today: {fb_count}/{FB_DAILY_LIMIT}")
-
+        print(f"\nFacebook posts today: {fb_count}/{FB_DAILY_LIMIT}")
         if fb_count >= FB_DAILY_LIMIT:
-            print("Daily limit reached.")
+            print("Daily limit reached — exiting.")
             return
 
-        # ─── FETCH ────────────────────────────
-        articles = fetch_articles()
-
+        # ── STEP 1: FETCH ──────────────────────────────────────────────────
+        _sep()
+        print("[STEP 1] FETCH")
+        _sep()
+        articles = fetch_articles()[:ARTICLE_CAP]
+        print(f"Fetched {len(articles)} articles (cap={ARTICLE_CAP})")
         if not articles:
             print("No articles found.")
             return
 
-        # ─── DEDUP ────────────────────────────
-        merged = deduplicate(articles)
-        print(f"Unique stories: {len(merged)}")
-
-        # ─── FILTER + SCORE ────────────────────
-        fresh = []
-
-        for a in merged:
-
-            if already_posted(conn, a["hash"]):
-                continue
-
-            if title_already_posted(conn, a["title"]):
-                continue
-
-            score, level = score_article(a, trending_topics)
-
-            if level == 5:
-                continue
-
-            a["score"] = score
-            a["level"] = level
-            fresh.append(a)
-
-        fresh.sort(key=lambda x: x["score"], reverse=True)
-
-        print(f"\nQualified articles: {len(fresh)}")
-
-        if not fresh:
+        # ── STEP 2: FAKE NEWS FILTER ───────────────────────────────────────
+        _sep()
+        print("[STEP 2] FAKE NEWS FILTER")
+        _sep()
+        trusted = []
+        for a in articles:
+            trust = fake_news_score(a)
+            if trust >= 0.40:
+                a["trust_score"] = trust
+                trusted.append(a)
+            else:
+                print(f"  REJECT trust={trust:.2f}: {a['title'][:70]}")
+        print(f"Passed: {len(trusted)}/{len(articles)}")
+        if not trusted:
             return
 
-        # ─── MAIN LOOP ────────────────────────
-        for article in fresh:
+        # ── STEP 3: SEMANTIC EMBEDDING FILTER ─────────────────────────────
+        _sep()
+        print("[STEP 3] SEMANTIC EMBEDDING FILTER")
+        _sep()
+        relevant = []
+        for a in trusted:
+            emb = embed_article(a)
+            ok, reason = passes_semantic_filter(emb)
+            if ok:
+                a["_embedding"] = emb
+                relevant.append(a)
+            else:
+                print(f"  REJECT {reason}: {a['title'][:70]}")
+        print(f"Passed: {len(relevant)}/{len(trusted)}")
+        if not relevant:
+            return
 
-            if fb_count >= FB_DAILY_LIMIT:
-                break
+        # ── STEP 4: DUPLICATE CLUSTERING ──────────────────────────────────
+        _sep()
+        print("[STEP 4] DUPLICATE CLUSTERING (threshold=0.85)")
+        _sep()
+        unique = deduplicate(relevant, threshold=0.85)
 
-            print("\n" + "-" * 60)
-            print(f"Processing: {article['title']}")
-            print(f"Score: {article['score']} | Level: {article['level']}")
-
-            # ─── GENERATE POST ────────────────
-            content = generate_post(article)
-
-            if not content:
-                print("❌ Post generation failed")
+        # Remove already-posted articles
+        fresh = []
+        for a in unique:
+            if already_posted(conn, a["hash"]):
                 continue
-
-            print("Post generated ✔")
-
-            # ─── GENERATE IMAGE ───────────────
-            image_path = None
-
-            try:
-                image_path = generate_image(
-                    content["image_keywords"],
-                    content.get("image_headline", article["title"]),
-                    article["source_type"],
-                    article["level"] == 1
-                )
-            except Exception as e:
-                print("Image error:", e)
-
-            if not image_path:
-                print("❌ Image generation failed")
+            if title_already_posted(conn, a["title"]):
                 continue
+            fresh.append(a)
+        print(f"Fresh unique stories: {len(fresh)}")
+        if not fresh:
+            print("All articles already posted.")
+            return
 
-            # ─────────────────────────────────────────
-            # 🔥 FINAL CLIP SAFETY CHECK (IMPORTANT)
-            # ─────────────────────────────────────────
-            try:
-                score = clip_score(content["post_text"], image_path)
-                print(f"Final CLIP score: {score:.3f}")
+        # ── STEP 5: INTENT CLASSIFICATION + CAPTION GENERATION ────────────
+        _sep()
+        print(f"[STEP 5] INTENT CLASSIFICATION + CAPTIONS (top {CLASSIFY_TOP} articles)")
+        _sep()
+        from groq import Groq
+        groq_client = Groq(api_key=os.getenv("GROQ_API_KEY"))
 
-                if score < 0.18:
-                    print("❌ Image mismatch detected — skipping post")
-                    try:
-                        os.unlink(image_path)
-                    except:
-                        pass
-                    continue
+        classified = []
+        for a in fresh[:CLASSIFY_TOP]:
+            print(f"  → {a['title'][:70]}")
+            result = classify_and_generate(a, groq_client)
+            primary   = result["intent"]["primary"]
+            top_score = max(
+                (i["score"] for i in result["intent"]["intents"] if i["label"] == primary),
+                default=0.0,
+            )
+            ambiguous = result["intent"].get("ambiguous", False)
+            print(f"     intent={primary} ({top_score:.2f}){' [ambiguous]' if ambiguous else ''}")
+            classified.append((a, result))
 
-            except Exception as e:
-                print("CLIP check failed:", e)
+        if not classified:
+            return
 
-            # ─── FACEBOOK POST ─────────────────
-            fb_result = post_to_facebook(content["post_text"], image_path)
+        # ── STEP 6: TOPIC MEMORY CHECK ─────────────────────────────────────
+        _sep()
+        print("[STEP 6] TOPIC MEMORY CHECK")
+        _sep()
+        article, intent_result = get_best_intent(classified)
+        primary_intent = intent_result["intent"]["primary"]
+        secondary_intent = intent_result["intent"].get("secondary", primary_intent)
+        print(f"Selected article: [{primary_intent}] {article['title'][:70]}")
 
-            if fb_result:
+        # ── STEP 7: SCENE TEMPLATE SELECTION ──────────────────────────────
+        # (handled inside pixabay_searcher — it calls scene_selector per loop)
 
+        # ── STEP 8: IMAGE SEARCH + CLIP VALIDATION ─────────────────────────
+        _sep()
+        print("[STEP 8] IMAGE SEARCH + CLIP VALIDATION")
+        _sep()
+        image_url, best_clip, retry_count = search_with_clip_validation(
+            intent_result, article
+        )
+        print(f"Image selected: CLIP={best_clip:.3f}, retries={retry_count}")
+        if not image_url:
+            print("  No Pixabay image found — will use dark fallback in composer")
+
+        # ── STEP 9: IMAGE COMPOSITION ──────────────────────────────────────
+        _sep()
+        print("[STEP 9] IMAGE COMPOSITION (per platform)")
+        _sep()
+        source_display = article.get("domain", "Unknown")
+        published_at   = article.get("published_at")
+
+        platform_images = save_platform_images(
+            image_url,
+            primary_intent,
+            article["title"],
+            source_display,
+            published_at,
+        )
+        print(f"Images composed: {list(platform_images.keys())}")
+
+        if not platform_images:
+            print("Image composition failed for all platforms — aborting.")
+            return
+
+        # ── STEP 10: CAPTIONS (generated in Step 5, retrieved here) ───────
+        captions = intent_result["captions"]
+
+        # ── STEP 11: SCHEDULER QUEUE ───────────────────────────────────────
+        _sep()
+        print("[STEP 11] SCHEDULER QUEUE")
+        _sep()
+        platforms_ready = get_platforms_ready()
+        print(f"Platforms ready: {platforms_ready}")
+
+        if not platforms_ready:
+            print("All platforms on cooldown — queued for next run.")
+            log_result(
+                article_url=article.get("url", ""),
+                intent=primary_intent,
+                clip_score=best_clip,
+                image_url=image_url or "",
+                platforms=[],
+                status="queued",
+                retry_count=retry_count,
+            )
+            return
+
+        # ── STEP 12: POST + LOG ────────────────────────────────────────────
+        _sep()
+        print("[STEP 12] POST + LOG")
+        _sep()
+        posted_platforms = []
+
+        if "facebook" in platforms_ready and "facebook" in platform_images:
+            fb_ok = post_to_facebook(captions["facebook"], platform_images["facebook"])
+            if fb_ok:
+                queue_mark_posted("facebook")
                 mark_posted(conn, article["hash"], article["title"], "facebook")
                 fb_count += 1
-
-                print(f"[FB {fb_count}/{FB_DAILY_LIMIT}] Posted ✔")
-
-                # ─── INSTAGRAM ───────────────
-                ig_result = post_to_instagram(content["post_text"], image_path)
-
-                if ig_result:
-                    mark_posted(conn, article["hash"], article["title"], "instagram")
-                    print("[IG] Posted ✔")
-
-                # ─── CLEANUP ────────────────
-                try:
-                    os.unlink(image_path)
-                except:
-                    pass
-
-                # ─── DELAY (IMPORTANT) ──────
-                if fb_count < FB_DAILY_LIMIT:
-                    print(f"Sleeping {POST_DELAY_SECONDS}s before next post...")
-                    time.sleep(POST_DELAY_SECONDS)
-
-                break
-
+                posted_platforms.append("facebook")
+                print(f"  Facebook [FB {fb_count}/{FB_DAILY_LIMIT}] ✔")
             else:
-                print("FB failed, trying next article...")
+                print("  Facebook failed")
 
-                try:
-                    os.unlink(image_path)
-                except:
-                    pass
+        if "instagram" in platforms_ready and "instagram" in platform_images:
+            ig_ok = post_to_instagram(captions["instagram"], platform_images["instagram"])
+            if ig_ok:
+                queue_mark_posted("instagram")
+                mark_posted(conn, article["hash"], article["title"], "instagram")
+                posted_platforms.append("instagram")
+                print("  Instagram ✔")
+            else:
+                print("  Instagram failed")
 
-        # ─── SUMMARY ───────────────────────────
-        print("\n" + "=" * 60)
-        print(f"FINAL FB COUNT: {fb_count}/{FB_DAILY_LIMIT}")
-        print(f"END TIME: {datetime.now(PKT).strftime('%I:%M %p PKT')}")
-        print("=" * 60)
+        # Update topic memory only if at least one platform posted
+        if posted_platforms:
+            mark_intent_posted(primary_intent)
+
+        status = "success" if posted_platforms else "failed"
+        log_result(
+            article_url=article.get("url", ""),
+            intent=primary_intent,
+            clip_score=best_clip,
+            image_url=image_url or "",
+            platforms=posted_platforms,
+            status=status,
+            retry_count=retry_count,
+        )
+
+        # Cleanup temp image files
+        for path in platform_images.values():
+            try:
+                os.unlink(path)
+            except Exception:
+                pass
+
+        # ── Summary ────────────────────────────────────────────────────────
+        _sep("═")
+        print(f"STATUS:    {status.upper()}")
+        print(f"POSTED TO: {posted_platforms}")
+        print(f"INTENT:    {primary_intent}")
+        print(f"CLIP:      {best_clip:.3f}")
+        print(f"FB COUNT:  {fb_count}/{FB_DAILY_LIMIT}")
+        print(f"END:       {datetime.now(PKT).strftime('%I:%M %p PKT')}")
+        _sep("═")
 
     finally:
         conn.close()
