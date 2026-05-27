@@ -11,19 +11,22 @@ from sklearn.metrics.pairwise import cosine_similarity
 
 load_dotenv()
 
-# ─────────────────────────────────────────────
-# CLIP MODEL
-# ─────────────────────────────────────────────
+# ─────────────────────────────
+# CLIP MODEL (LOAD ONCE)
+# ─────────────────────────────
 clip_model = SentenceTransformer("clip-ViT-B-32")
 
 GRAPH_URL = "https://graph.facebook.com/v19.0"
 
 
-# ─────────────────────────────────────────────
-# CLIP SCORE (SAFE)
-# ─────────────────────────────────────────────
+# ─────────────────────────────
+# CLIP SCORE (FIXED)
+# ─────────────────────────────
 def clip_score(text, image_path):
     try:
+        if not image_path or not os.path.exists(image_path):
+            return 0.0
+
         img = Image.open(image_path).convert("RGB")
 
         text_emb = clip_model.encode([text])
@@ -37,32 +40,43 @@ def clip_score(text, image_path):
         return 0.0
 
 
-# ─────────────────────────────────────────────
-# FALLBACK IMAGE (IMPORTANT FIX)
-# ─────────────────────────────────────────────
-def fallback_image(headline):
-    img = Image.new("RGB", (1200, 630), (25, 25, 25))
-    draw = ImageDraw.Draw(img)
+# ─────────────────────────────
+# POST GENERATOR (FIXED)
+# ─────────────────────────────
+def generate_post(article):
 
-    draw.text((50, 250), headline[:80], fill="white")
+    title = article.get("title", "")
+    summary = article.get("summary", "")
+    source = article.get("source_type", "world")
 
-    tmp = tempfile.NamedTemporaryFile(delete=False, suffix=".jpg")
-    img.save(tmp.name, "JPEG", quality=95)
+    if not title or not summary:
+        return None
 
-    return tmp.name
+    return {
+        "post_text": f"{title}\n\n{summary[:300]}...",
+        "image_keywords": f"{title} {summary[:120]}",
+        "image_headline": title,
+        "source_type": source
+    }
 
 
-# ─────────────────────────────────────────────
-# IMAGE DOWNLOAD SAFE
-# ─────────────────────────────────────────────
+# ─────────────────────────────
+# SAFE IMAGE DOWNLOAD (IMPORTANT FIX)
+# ─────────────────────────────
 def safe_download(url):
     try:
         r = requests.get(url, timeout=15)
 
+        # ❌ reject bad responses
         if r.status_code != 200:
             return None
 
-        if len(r.content) < 8000:
+        # ❌ reject HTML / tiny files
+        if len(r.content) < 10000:
+            return None
+
+        # ❌ extra validation (prevents corrupted jpg)
+        if b"<html" in r.content[:200].lower():
             return None
 
         tmp = tempfile.NamedTemporaryFile(delete=False, suffix=".jpg")
@@ -71,13 +85,14 @@ def safe_download(url):
 
         return tmp.name
 
-    except:
+    except Exception as e:
+        print("Download error:", e)
         return None
 
 
-# ─────────────────────────────────────────────
+# ─────────────────────────────
 # IMAGE OVERLAY
-# ─────────────────────────────────────────────
+# ─────────────────────────────
 def add_text_overlay(image_path, headline, source_type="world", is_breaking=False):
 
     try:
@@ -102,20 +117,24 @@ def add_text_overlay(image_path, headline, source_type="world", is_breaking=Fals
 
         return tmp.name
 
-    except:
+    except Exception as e:
+        print("Overlay error:", e)
         return image_path
 
 
-# ─────────────────────────────────────────────
-# MAIN IMAGE GENERATION (FIXED LOGIC)
-# ─────────────────────────────────────────────
+# ─────────────────────────────
+# IMAGE GENERATION (FINAL FIXED VERSION)
+# ─────────────────────────────
 def generate_image(keywords, headline, source_type="world", is_breaking=False):
 
     clean = keywords.lower()
-    clean = re.sub(r"\b(news|breaking|photo|image|scene)\b", "", clean)
+    clean = re.sub(r"\b(news|breaking|photo|image|scene|report)\b", "", clean)
     words = clean.split()
 
     search_terms = []
+
+    if len(words) >= 3:
+        search_terms.append(" ".join(words[:3]))
 
     if len(words) >= 2:
         search_terms.append(" ".join(words[:2]))
@@ -123,18 +142,16 @@ def generate_image(keywords, headline, source_type="world", is_breaking=False):
     if words:
         search_terms.append(words[0])
 
-    search_terms.append(
-        "war protest news crowd"
-        if source_type == "world"
-        else "pakistan protest crowd"
-    )
+    # smart fallback queries
+    search_terms.extend([
+        "war news crowd protest",
+        "breaking news city",
+        "global crisis report" if source_type == "world" else "pakistan crowd protest"
+    ])
 
     best_img = None
-    best_score = -1
+    best_score = 0.0
 
-    # ─────────────────────────────
-    # SEARCH LOOP (FIXED)
-    # ─────────────────────────────
     for term in search_terms:
 
         try:
@@ -144,7 +161,7 @@ def generate_image(keywords, headline, source_type="world", is_breaking=False):
                     "key": os.getenv("PIXABAY_API_KEY"),
                     "q": term,
                     "image_type": "photo",
-                    "per_page": 3,
+                    "per_page": 5,
                     "safesearch": "true"
                 },
                 timeout=10
@@ -172,20 +189,27 @@ def generate_image(keywords, headline, source_type="world", is_breaking=False):
                     best_score = score
                     best_img = img_path
 
-                # early stop if good enough
-                if best_score > 0.30:
+                # early stop if perfect match found
+                if best_score >= 0.35:
                     break
 
         except Exception as e:
-            print("Image fetch error:", e)
+            print("Image search error:", e)
 
     # ─────────────────────────────
-    # FINAL DECISION (IMPORTANT FIX)
+    # FINAL DECISION RULE
     # ─────────────────────────────
-    threshold = 0.18 if source_type == "world" else 0.20
-
-    if best_img and best_score >= threshold:
+    if best_img and best_score >= 0.20:
         return add_text_overlay(best_img, headline, source_type, is_breaking)
 
-    print("❌ No good match → using fallback image")
-    return fallback_image(headline)
+    print("❌ No good match → fallback image")
+
+    # fallback image (always safe)
+    img = Image.new("RGB", (1200, 630), (20, 20, 20))
+    draw = ImageDraw.Draw(img)
+    draw.text((50, 300), headline[:100], fill="white")
+
+    tmp = tempfile.NamedTemporaryFile(delete=False, suffix=".jpg")
+    img.save(tmp.name, "JPEG", quality=95)
+
+    return tmp.name
