@@ -11,7 +11,7 @@ from scene_selector import get_search_keywords
 
 logger = logging.getLogger(__name__)
 
-CLIP_ACCEPT_THRESHOLD = 0.28   # lowered from 0.30; CLIP text↔image scores run 0.22-0.30 in practice
+CLIP_ACCEPT_THRESHOLD = 0.27   # calibrated: loop-0 real-world scores cluster at 0.27-0.29 for valid matches
 MAX_RETRY_LOOPS = 3             # 0,1,2,3 → 4 attempts total
 PIXABAY_RESULTS_PER_CALL = 5
 

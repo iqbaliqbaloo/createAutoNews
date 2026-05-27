@@ -1,7 +1,8 @@
 import os
 import sys
+import time
 import pytz
-from datetime import datetime
+from datetime import datetime, timezone
 from dotenv import load_dotenv
 load_dotenv()
 
@@ -40,6 +41,7 @@ from image_composer import save_platform_images
 from scheduler_queue import (
     get_platforms_ready,
     mark_posted as queue_mark_posted,
+    next_available,
 )
 
 # ── Step 12: Post + log ───────────────────────────────────────────────────
@@ -212,17 +214,28 @@ def run_pipeline():
         print(f"Platforms ready: {platforms_ready}")
 
         if not platforms_ready:
-            print("All platforms on cooldown — queued for next run.")
-            log_result(
-                article_url=article.get("url", ""),
-                intent=primary_intent,
-                clip_score=best_clip,
-                image_url=image_url or "",
-                platforms=[],
-                status="queued",
-                retry_count=retry_count,
+            # If cooldowns expire within 10 minutes, wait rather than discard this run.
+            now_utc = datetime.now(timezone.utc)
+            max_wait = max(
+                max(0, (next_available(p) - now_utc).total_seconds())
+                for p in ["facebook", "instagram"]
             )
-            return
+            if max_wait <= 600:
+                print(f"  Cooldowns expire in {int(max_wait)}s — waiting...")
+                time.sleep(max_wait + 5)
+                platforms_ready = get_platforms_ready()
+            else:
+                print(f"  Cooldowns expire in {int(max_wait / 60)}m — queuing for next run.")
+                log_result(
+                    article_url=article.get("url", ""),
+                    intent=primary_intent,
+                    clip_score=best_clip,
+                    image_url=image_url or "",
+                    platforms=[],
+                    status="queued",
+                    retry_count=retry_count,
+                )
+                return
 
         # ── STEP 12: POST + LOG ────────────────────────────────────────────
         _sep()
