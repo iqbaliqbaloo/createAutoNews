@@ -1,5 +1,5 @@
-import os, json, time, requests, random, tempfile, textwrap
-from groq       import Groq
+import os, re, json, time, requests, random, tempfile, textwrap
+from groq       import Groq, RateLimitError
 from langdetect import detect
 from dotenv     import load_dotenv
 from PIL        import Image, ImageDraw, ImageFont
@@ -7,8 +7,10 @@ from PIL        import Image, ImageDraw, ImageFont
 load_dotenv()
 
 # Create Groq clients ONCE at module level
-_client_1 = Groq(api_key=os.getenv("GROQ_API_KEY"))   if os.getenv("GROQ_API_KEY")   else None
-_client_2 = Groq(api_key=os.getenv("GROQ_API_KEY_2")) if os.getenv("GROQ_API_KEY_2") else None
+_key_1 = (os.getenv("GROQ_API_KEY") or "").strip()
+_key_2 = (os.getenv("GROQ_API_KEY_2") or "").strip()
+_client_1 = Groq(api_key=_key_1) if _key_1 else None
+_client_2 = Groq(api_key=_key_2) if _key_2 else None
 
 _FONT_BOLD = [
     "/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf",
@@ -25,7 +27,7 @@ def _load_font(size, bold=False):
     for path in (_FONT_BOLD if bold else _FONT_REGULAR):
         try:
             return ImageFont.truetype(path, size)
-        except:
+        except (OSError, IOError):
             continue
     return ImageFont.load_default()
 
@@ -51,8 +53,9 @@ def _shadow_text(draw, pos, text, font, fill="white", shadow=(0, 0, 0)):
 
 def detect_language(article):
     try:
-        return detect(article["title"] + " " + article["summary"])
-    except:
+        text = article.get("title", "") + " " + article.get("summary", "")
+        return detect(text) if text.strip() else "en"
+    except Exception:
         return "en"
 
 def get_post_length(score, level):
@@ -159,7 +162,7 @@ def add_text_overlay(image_path, headline, source_type="world", is_breaking=Fals
         if tmp_path:
             try:
                 os.unlink(tmp_path)
-            except:
+            except OSError:
                 pass
         return image_path
 
@@ -230,6 +233,9 @@ Return ONLY valid JSON:
             except json.JSONDecodeError as e:
                 print(f"  JSON error: {e}")
                 time.sleep(3)
+            except RateLimitError:
+                print(f"  {name} rate limit — switching")
+                break
             except Exception as e:
                 msg = str(e)
                 if "429" in msg or "rate_limit" in msg.lower():
@@ -243,9 +249,9 @@ Return ONLY valid JSON:
 
 def generate_image(keywords, headline, source_type="world", is_breaking=False):
     clean = keywords.lower()
-    for w in ["news","breaking","media","photorealistic","powerful",
-              "scene","photo","image","a ","an ","the "]:
-        clean = clean.replace(w, " ").strip()
+    for w in ["news", "breaking", "media", "photorealistic", "powerful", "scene", "photo", "image"]:
+        clean = re.sub(r'\b' + w + r'\b', ' ', clean)
+    clean = re.sub(r'\b(a|an|the)\b', ' ', clean)
     clean = " ".join(clean.split())
 
     parts        = [p.strip() for p in clean.replace(",", " ").split() if p.strip()]
@@ -306,7 +312,7 @@ def generate_image(keywords, headline, source_type="world", is_breaking=False):
             if final != tmp_path:
                 try:
                     os.unlink(tmp_path)
-                except:
+                except OSError:
                     pass
             return final
 
@@ -315,7 +321,7 @@ def generate_image(keywords, headline, source_type="world", is_breaking=False):
             if tmp_path:
                 try:
                     os.unlink(tmp_path)
-                except:
+                except OSError:
                     pass
             continue
 

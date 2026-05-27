@@ -111,43 +111,43 @@ def post_to_facebook(text, image_path=None):
 
 # ─── INSTAGRAM (UNCOMMENT WHEN READY) ────────────────────
 
-# def post_to_instagram(text, image_path=None):
-#     FB_PAGE_TOKEN = os.getenv("FB_PAGE_TOKEN")
-#     IG_USER_ID    = os.getenv("IG_USER_ID")
-#     if not FB_PAGE_TOKEN or not IG_USER_ID:
-#         print("ERROR: Missing Instagram credentials")
-#         return False
-#     print(f"Posting to Instagram: {IG_USER_ID}")
-#     try:
-#         img_url = None
-#         if image_path and os.path.exists(image_path):
-#             img_url = upload_to_imgbb(image_path)
-#         if not img_url:
-#             print("  No image for Instagram — skipping")
-#             return False
-#         r = requests.post(
-#             f"https://graph.facebook.com/v19.0/{IG_USER_ID}/media",
-#             data={"image_url": img_url, "caption": text, "access_token": FB_PAGE_TOKEN},
-#             timeout=30
-#         )
-#         container = r.json()
-#         if "id" not in container:
-#             print(f"  Instagram container failed: {container}")
-#             return False
-#         r2     = requests.post(
-#             f"https://graph.facebook.com/v19.0/{IG_USER_ID}/media_publish",
-#             data={"creation_id": container["id"], "access_token": FB_PAGE_TOKEN},
-#             timeout=30
-#         )
-#         result = r2.json()
-#         if "id" in result:
-#             print(f"  Instagram posted: {result['id']}")
-#             return True
-#         print(f"  Instagram failed: {result}")
-#         return False
-#     except Exception as e:
-#         print(f"  Instagram exception: {e}")
-#         return False
+def post_to_instagram(text, image_path=None):
+    FB_PAGE_TOKEN = os.getenv("FB_PAGE_TOKEN")
+    IG_USER_ID    = os.getenv("IG_USER_ID")
+    if not FB_PAGE_TOKEN or not IG_USER_ID:
+        print("ERROR: Missing Instagram credentials")
+        return False
+    print(f"Posting to Instagram: {IG_USER_ID}")
+    try:
+        img_url = None
+        if image_path and os.path.exists(image_path):
+            img_url = upload_to_imgbb(image_path)
+        if not img_url:
+            print("  No image for Instagram — skipping")
+            return False
+        r = requests.post(
+            f"https://graph.facebook.com/v19.0/{IG_USER_ID}/media",
+            data={"image_url": img_url, "caption": text, "access_token": FB_PAGE_TOKEN},
+            timeout=30
+        )
+        container = r.json()
+        if "id" not in container:
+            print(f"  Instagram container failed: {container}")
+            return False
+        r2     = requests.post(
+            f"https://graph.facebook.com/v19.0/{IG_USER_ID}/media_publish",
+            data={"creation_id": container["id"], "access_token": FB_PAGE_TOKEN},
+            timeout=30
+        )
+        result = r2.json()
+        if "id" in result:
+            print(f"  Instagram posted: {result['id']}")
+            return True
+        print(f"  Instagram failed: {result}")
+        return False
+    except Exception as e:
+        print(f"  Instagram exception: {e}")
+        return False
 
 # ─── TWITTER (UNCOMMENT WHEN READY) ──────────────────────
 

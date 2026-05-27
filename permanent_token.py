@@ -2,8 +2,11 @@ import requests, os
 from dotenv import load_dotenv
 load_dotenv()
 
-# Paste fresh token from Graph API Explorer here
-FRESH_USER_TOKEN = "EAAdKjQ5ftosBRg7hyMxCyv4jKZAEuqkb0UvutMBNjFhJPMg0vKByIo69YJ52NIsSVvt0G9SPkRH9Bdz30pXKTXECMEgXtefFQKnTo3GNBZABxN2zYY4mTBLA8mbhQeLu3F5Qr3WvdYX1GZCQURKLW1oH6lV0DhDNV3kd4xaoZBiDYZCZBzaWZBPbDsvXXPwFYooG0OlZBpq1"
+# Set FB_USER_TOKEN env var (or paste token below temporarily — never commit it)
+FRESH_USER_TOKEN = os.getenv("FB_USER_TOKEN", "")
+if not FRESH_USER_TOKEN:
+    print("ERROR: Set FB_USER_TOKEN env var to your fresh Graph API Explorer token")
+    exit(1)
 
 APP_ID     = os.getenv("FB_APP_ID")
 APP_SECRET = os.getenv("FB_APP_SECRET")

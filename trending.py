@@ -14,14 +14,14 @@ def get_trending_topics():
             trending += pk[0].tolist()[:10]
             print(f"  Pakistan trends: {pk[0].tolist()[:5]}")
             time.sleep(1)
-        except:
+        except Exception:
             pass
 
         try:
             us = pytrends.trending_searches(pn="united_states")
             trending += us[0].tolist()[:8]
             time.sleep(1)
-        except:
+        except Exception:
             pass
 
     except Exception as e:
@@ -89,7 +89,7 @@ def _get_rss_trending():
                     word = word.strip(".,!?:;\"'()-")
                     if word and word not in SKIP_WORDS and len(word) > 3:
                         word_count[word] += 1
-        except:
+        except Exception:
             continue
 
     # Words appearing 3+ times across sources = trending

@@ -4,7 +4,10 @@ import pytz
 from datetime import datetime
 from dotenv import load_dotenv
 
-sys.stdout.reconfigure(encoding="utf-8")
+try:
+    sys.stdout.reconfigure(encoding="utf-8")
+except AttributeError:
+    pass
 load_dotenv()
 
 from db           import init_db, already_posted, title_already_posted, mark_posted, get_today_count
@@ -12,9 +15,8 @@ from fetcher      import fetch_articles
 from deduplicator import deduplicate
 from scorer       import score_article
 from generator    import generate_post, generate_image
-from publisher    import post_to_facebook
+from publisher    import post_to_facebook, post_to_instagram
 from trending     import get_trending_topics
-# from publisher import post_to_instagram  # uncomment when ready
 # from publisher import post_to_twitter    # uncomment when ready
 # from publisher import post_to_telegram   # uncomment when ready
 
@@ -106,10 +108,10 @@ def run_pipeline():
                 print(f"[FB {fb_count}/{FB_DAILY_LIMIT}] Posted ✅")
 
                 # ── Instagram (uncomment when ready) ──────
-                # ig_result = post_to_instagram(content["post_text"], image_path)
-                # if ig_result:
-                #     mark_posted(conn, article["hash"], article["title"], "instagram")
-                #     print(f"[IG] Posted ✅")
+                ig_result = post_to_instagram(content["post_text"], image_path)
+                if ig_result:
+                    mark_posted(conn, article["hash"], article["title"], "instagram")
+                    print(f"[IG] Posted ✅")
 
                 # ── Twitter (uncomment when ready) ────────
                 # tw_result = post_to_twitter(content["post_text"], image_path)
@@ -128,7 +130,7 @@ def run_pipeline():
 
             try:
                 os.unlink(image_path)
-            except:
+            except OSError:
                 pass
 
             if fb_result:

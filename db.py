@@ -49,11 +49,15 @@ def title_already_posted(conn, title, threshold=0.78):
     return float(sims.max()) >= threshold
 
 def mark_posted(conn, url_hash, title, platform):
-    conn.execute(
-        "INSERT OR IGNORE INTO posted (url_hash, platform, title) VALUES (?,?,?)",
-        (url_hash, platform, title)
-    )
-    conn.commit()
+    try:
+        conn.execute(
+            "INSERT OR IGNORE INTO posted (url_hash, platform, title) VALUES (?,?,?)",
+            (url_hash, platform, title)
+        )
+        conn.commit()
+    except Exception as e:
+        print(f"  DB mark_posted error: {e}")
+        conn.rollback()
 
 def get_today_count(conn, platform):
     """Count posts made today in PKT timezone (UTC+5)"""

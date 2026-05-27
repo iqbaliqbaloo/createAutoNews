@@ -41,7 +41,7 @@ def is_fresh(entry, hours=8):
         published = datetime(*entry.published_parsed[:6], tzinfo=timezone.utc)
         age       = datetime.now(timezone.utc) - published
         return age <= timedelta(hours=hours)
-    except:
+    except Exception:
         return False
 
 def fetch_feed(url, timeout=10):
