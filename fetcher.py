@@ -92,7 +92,8 @@ def fetch_articles():
         if not feed:
             return
 
-        count = 0
+        domain = urlparse(url).netloc
+        count  = 0
 
         for entry in feed.entries:
             if not is_fresh(entry):
@@ -108,8 +109,6 @@ def fetch_articles():
             if not title:
                 continue
             summary = clean_text(entry.get("summary", title))
-
-            domain = urlparse(url).netloc
 
             articles.append({
                 "title": title,
