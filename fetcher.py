@@ -9,6 +9,11 @@ from urllib.parse import urlparse
 PAKISTAN_SOURCES = [
     "https://www.geo.tv/rss/1/0",
     "https://arynews.tv/feed/",
+    "https://www.dawn.com/feeds/home",
+    "https://www.thenews.com.pk/rss/1/1",
+    "https://www.samaa.tv/feed/",
+    "https://tribune.com.pk/feed",
+    "https://www.bbc.com/urdu/index.xml",
 ]
 
 WORLD_SOURCES = [

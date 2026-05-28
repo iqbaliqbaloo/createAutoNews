@@ -1,30 +1,146 @@
 import os
+import json
+import random
 import logging
 import tempfile
+from datetime import datetime, timezone
 import requests
 from PIL import Image
 from sklearn.metrics.pairwise import cosine_similarity
 
-# Reuse the CLIP model already loaded by generator.py to avoid double-loading.
 from generator import clip_model
 from scene_selector import get_search_keywords
 
 logger = logging.getLogger(__name__)
 
-CLIP_ACCEPT_THRESHOLD  = 0.27   # calibrated to real-world CLIP text↔image scores
-MAX_RETRY_LOOPS        = 3      # 0,1,2,3 → 4 attempts total
+CLIP_ACCEPT_THRESHOLD    = 0.27
+MAX_RETRY_LOOPS          = 3
 PIXABAY_RESULTS_PER_CALL = 5
+
+DATA_DIR          = "data"
+IMAGE_CACHE_FILE  = os.path.join(DATA_DIR, "image_cache.json")
+RATE_LIMIT_FILE   = os.path.join(DATA_DIR, "rate_limit.json")
+IMAGE_LIBRARY_DIR = "image_library"
+
+IMAGE_CACHE_TTL_SECONDS = 21600   # 6 hours
+PIXABAY_HOURLY_LIMIT    = 80
+
+
+# ── Image cache ────────────────────────────────────────────────────────────
+
+def _load_cache():
+    try:
+        with open(IMAGE_CACHE_FILE) as f:
+            return json.load(f)
+    except Exception:
+        return {}
+
+
+def _save_cache(cache):
+    os.makedirs(DATA_DIR, exist_ok=True)
+    try:
+        with open(IMAGE_CACHE_FILE, "w") as f:
+            json.dump(cache, f, indent=2)
+    except Exception as e:
+        logger.warning(f"Cache save failed: {e}")
+
+
+def _get_cached_urls(cache_key):
+    cache = _load_cache()
+    entry = cache.get(cache_key)
+    if not entry:
+        return None
+    try:
+        age = (datetime.now(timezone.utc) - datetime.fromisoformat(
+            entry["cached_at"].replace("Z", "+00:00")
+        )).total_seconds()
+        if age < IMAGE_CACHE_TTL_SECONDS:
+            logger.info(f"Image cache HIT: {cache_key} (age {int(age)}s)")
+            return entry["urls"]
+    except Exception:
+        pass
+    return None
+
+
+def _store_cached_urls(cache_key, urls):
+    if not urls:
+        return
+    cache = _load_cache()
+    cache[cache_key] = {
+        "urls":      urls,
+        "cached_at": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
+    }
+    _save_cache(cache)
+
+
+# ── Rate-limit tracking ────────────────────────────────────────────────────
+
+def _load_rate():
+    try:
+        with open(RATE_LIMIT_FILE) as f:
+            return json.load(f)
+    except Exception:
+        return {}
+
+
+def _save_rate(data):
+    os.makedirs(DATA_DIR, exist_ok=True)
+    try:
+        with open(RATE_LIMIT_FILE, "w") as f:
+            json.dump(data, f, indent=2)
+    except Exception as e:
+        logger.warning(f"Rate limit save failed: {e}")
+
+
+def _pixabay_calls_this_hour():
+    data = _load_rate()
+    pix  = data.get("pixabay", {})
+    start_str = pix.get("window_start")
+    if not start_str:
+        return 0
+    try:
+        start = datetime.fromisoformat(start_str.replace("Z", "+00:00"))
+        elapsed = (datetime.now(timezone.utc) - start).total_seconds()
+        if elapsed > 3600:
+            return 0   # window expired
+        return pix.get("calls_this_hour", 0)
+    except Exception:
+        return 0
+
+
+def _increment_pixabay_count():
+    data  = _load_rate()
+    pix   = data.get("pixabay", {})
+    start_str = pix.get("window_start")
+    reset = False
+    if start_str:
+        try:
+            start   = datetime.fromisoformat(start_str.replace("Z", "+00:00"))
+            elapsed = (datetime.now(timezone.utc) - start).total_seconds()
+            if elapsed > 3600:
+                reset = True
+        except Exception:
+            reset = True
+    else:
+        reset = True
+
+    if reset:
+        pix = {
+            "calls_this_hour": 1,
+            "window_start":    datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
+        }
+    else:
+        pix["calls_this_hour"] = pix.get("calls_this_hour", 0) + 1
+
+    data["pixabay"] = pix
+    _save_rate(data)
 
 
 # ── CLIP scoring ───────────────────────────────────────────────────────────
 
 def _clip_score(image_path, scene_keywords):
-    """
-    Score image vs the SCENE KEYWORD STRING (not raw article text).
-    CLIP validates that the image visually matches the scene type.
-    """
     keyword_str = " ".join(scene_keywords)[:200]
-    img = Image.open(image_path).convert("RGB")
+    img      = Image.open(image_path).convert("RGB")
     text_emb = clip_model.encode([keyword_str])
     img_emb  = clip_model.encode([img])
     return float(cosine_similarity(text_emb, img_emb)[0][0])
@@ -32,11 +148,8 @@ def _clip_score(image_path, scene_keywords):
 
 # ── Pixabay search ─────────────────────────────────────────────────────────
 
-def _search_pixabay(keywords):
-    """
-    Try each keyword PHRASE individually until results are found.
-    Never joins all phrases into one long query — Pixabay times out on long strings.
-    """
+def _search_pixabay_raw(keywords):
+    """Call Pixabay API (no cache, no rate-gate)."""
     api_key = os.getenv("PIXABAY_API_KEY")
     if not api_key:
         return []
@@ -52,13 +165,13 @@ def _search_pixabay(keywords):
             r = requests.get(
                 "https://pixabay.com/api/",
                 params={
-                    "key":          api_key,
-                    "q":            phrase,
-                    "image_type":   "photo",
-                    "per_page":     PIXABAY_RESULTS_PER_CALL,
-                    "safesearch":   "true",
-                    "orientation":  "horizontal",
-                    "min_width":    1000,
+                    "key":         api_key,
+                    "q":           phrase,
+                    "image_type":  "photo",
+                    "per_page":    PIXABAY_RESULTS_PER_CALL,
+                    "safesearch":  "true",
+                    "orientation": "horizontal",
+                    "min_width":   1000,
                 },
                 timeout=12,
             )
@@ -68,18 +181,94 @@ def _search_pixabay(keywords):
                     seen.add(url)
                     results.append(url)
             if results:
-                break   # stop on first phrase that returns hits
+                break
         except Exception as e:
             logger.warning(f"Pixabay '{phrase}': {e}")
-            continue    # try next phrase on timeout / error
+            continue
 
     return results[:PIXABAY_RESULTS_PER_CALL]
+
+
+# ── Pexels search ──────────────────────────────────────────────────────────
+
+def _search_pexels(keywords):
+    """Search Pexels API as fallback when Pixabay hourly limit is hit."""
+    api_key = os.getenv("PEXELS_API_KEY")
+    if not api_key:
+        return []
+
+    phrases = keywords if isinstance(keywords, list) else [keywords]
+
+    for phrase in phrases:
+        phrase = phrase.strip()
+        if not phrase:
+            continue
+        try:
+            r = requests.get(
+                "https://api.pexels.com/v1/search",
+                params={"query": phrase, "per_page": PIXABAY_RESULTS_PER_CALL, "orientation": "landscape"},
+                headers={"Authorization": api_key},
+                timeout=12,
+            )
+            photos = r.json().get("photos", [])
+            urls = [p["src"]["large2x"] or p["src"]["large"] for p in photos if p.get("src")]
+            if urls:
+                return urls[:PIXABAY_RESULTS_PER_CALL]
+        except Exception as e:
+            logger.warning(f"Pexels '{phrase}': {e}")
+            continue
+
+    return []
+
+
+# ── Local image library fallback ──────────────────────────────────────────
+
+def _local_library_path(intent):
+    """Return a random local image path for the given intent, or None."""
+    folder = os.path.join(IMAGE_LIBRARY_DIR, intent.upper())
+    if not os.path.isdir(folder):
+        return None
+    files = [
+        os.path.join(folder, f)
+        for f in os.listdir(folder)
+        if f.lower().endswith((".jpg", ".jpeg", ".png"))
+    ]
+    if not files:
+        return None
+    return random.choice(files)
+
+
+# ── Unified image search (cache → Pixabay → Pexels → local library) ───────
+
+def _search_images(keywords, cache_key):
+    """
+    1. Try image cache (6-hour TTL)
+    2. If Pixabay under limit → call Pixabay, store in cache
+    3. If Pixabay at limit → call Pexels, store in cache
+    Returns list of URLs (possibly empty).
+    """
+    cached = _get_cached_urls(cache_key)
+    if cached:
+        return cached
+
+    if _pixabay_calls_this_hour() < PIXABAY_HOURLY_LIMIT:
+        _increment_pixabay_count()
+        urls = _search_pixabay_raw(keywords)
+        source = "Pixabay"
+    else:
+        logger.info("Pixabay hourly limit reached — switching to Pexels")
+        urls = _search_pexels(keywords)
+        source = "Pexels"
+
+    if urls:
+        logger.info(f"{source} returned {len(urls)} URLs for key={cache_key}")
+        _store_cached_urls(cache_key, urls)
+    return urls
 
 
 # ── Image download ─────────────────────────────────────────────────────────
 
 def _download_tmp(url):
-    """Download image to a temp file; returns path or None on failure."""
     try:
         r = requests.get(url, timeout=15)
         if r.status_code != 200 or len(r.content) < 8000:
@@ -107,33 +296,25 @@ def _cleanup(path):
 
 def search_with_clip_validation(intent_result, article=None):
     """
-    Steps 7 + 8: scene-keyword-driven Pixabay search with CLIP validation.
+    Steps 7 + 8: scene-keyword-driven image search with CLIP validation.
 
-    KEY DESIGN: the best-scoring image file is KEPT on disk and returned to
-    the caller as `best_path`.  The image_composer uses it directly — no
-    re-download — which eliminates blank images caused by network failures
-    between scoring and composition.  Caller is responsible for cleanup.
-
-    Retry strategy:
-      Loop 0 → primary scene keywords
-      Loop 1 → secondary keywords
-      Loop 2 → tertiary keywords (primary intent)
-      Loop 3 → generic fallback keyword
-    After all retries → use highest-scoring image regardless of CLIP score.
-    Never skip an article over image quality.
+    Fallback chain per retry loop:
+      Cache → Pixabay (or Pexels if rate-limited) → local image_library (last resort)
 
     Returns (image_url, best_clip_score, retry_count, best_image_path)
     """
+    intent_label = intent_result["intent"]["primary"]
     best_url   = None
     best_score = 0.0
-    best_path  = None   # kept on disk until caller cleans up
+    best_path  = None
 
     for loop in range(MAX_RETRY_LOOPS + 1):
-        keywords = get_search_keywords(intent_result, retry_loop=loop)
+        keywords  = get_search_keywords(intent_result, retry_loop=loop)
+        cache_key = f"{intent_label}_{keywords[0].replace(' ', '_')}" if keywords else f"{intent_label}_news"
         logger.info(f"Image search loop={loop} keywords={keywords}")
         print(f"  [Image loop {loop}] keywords: {keywords}")
 
-        for img_url in _search_pixabay(keywords):
+        for img_url in _search_images(keywords, cache_key):
             path = _download_tmp(img_url)
             if not path:
                 continue
@@ -149,12 +330,12 @@ def search_with_clip_validation(intent_result, article=None):
             print(f"    CLIP={score:.3f}")
 
             if score > best_score:
-                _cleanup(best_path)   # discard previous best
+                _cleanup(best_path)
                 best_score = score
                 best_url   = img_url
-                best_path  = path     # keep this file — do NOT clean up
+                best_path  = path
             else:
-                _cleanup(path)        # not better, discard immediately
+                _cleanup(path)
 
             if best_score >= CLIP_ACCEPT_THRESHOLD:
                 print(f"  Accepted (CLIP={best_score:.3f}, loop={loop})")
@@ -163,11 +344,12 @@ def search_with_clip_validation(intent_result, article=None):
         if loop >= MAX_RETRY_LOOPS:
             break
 
-    # ── Broad fallback: if no Pixabay result survived download, try safe terms ──
+    # ── Broad URL fallback ─────────────────────────────────────────────────
     if best_path is None:
         print("  All specific searches failed — trying broad fallback")
         for fallback in ["world news", "global city skyline", "news background", "city crowd"]:
-            for img_url in _search_pixabay([fallback]):
+            fallback_key = f"{intent_label}_{fallback.replace(' ', '_')}"
+            for img_url in _search_images([fallback], fallback_key):
                 path = _download_tmp(img_url)
                 if not path:
                     continue
@@ -185,6 +367,15 @@ def search_with_clip_validation(intent_result, article=None):
                     _cleanup(path)
             if best_path:
                 break
+
+    # ── Local image library — final fallback ──────────────────────────────
+    if best_path is None:
+        local = _local_library_path(intent_label)
+        if local:
+            print(f"  Using local library image: {local}")
+            best_path  = local
+            best_url   = ""
+            best_score = 0.0
 
     print(f"  Best available: CLIP={best_score:.3f} retries={MAX_RETRY_LOOPS} path={'ok' if best_path else 'NONE'}")
     return best_url, best_score, MAX_RETRY_LOOPS, best_path

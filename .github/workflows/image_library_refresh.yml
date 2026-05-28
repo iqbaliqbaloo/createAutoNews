@@ -1,0 +1,38 @@
+name: Image Library Refresh
+
+on:
+  schedule:
+    - cron: '0 0 * * 0'   # every Sunday at midnight UTC
+  workflow_dispatch:
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: pip install requests Pillow
+
+      - name: Download images per intent
+        run: python scripts/refresh_image_library.py
+        env:
+          PIXABAY_API_KEY: ${{ secrets.PIXABAY_API_KEY }}
+
+      - name: Commit updated library
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add image_library/
+          git diff --cached --quiet || git commit -m "chore: refresh image library [skip ci]"
+          git push

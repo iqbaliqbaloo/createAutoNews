@@ -35,7 +35,6 @@ def classify_and_generate(article, groq_client=None):
     title = article.get("title", "")
     description = (article.get("summary", "") or article.get("description", "") or "")[:500]
     source = article.get("domain", "Unknown")
-    url = article.get("url", "")
     intent_tags = " | ".join(
         f"{k}: {v}" for k, v in _INTENT_HASHTAGS.items()
     )
@@ -44,7 +43,6 @@ def classify_and_generate(article, groq_client=None):
 Article Title: {title}
 Article Description: {description}
 Source Domain: {source}
-Article URL: {url}
 
 Classify this article and generate captions. Return ONLY this JSON structure:
 
@@ -126,7 +124,7 @@ Brand tags always include: #VisionaryMinds #VMUpdates
         _normalise_intent(intent_data)
 
         captions = result.get("captions", {})
-        captions = _validate_captions(captions, article, intent_data, groq_client, url)
+        captions = _validate_captions(captions, article, intent_data, groq_client)
 
         return {"intent": intent_data, "captions": captions}
 
@@ -155,7 +153,7 @@ def _normalise_intent(intent_data):
     intent_data["secondary"] = sorted_i[1]["label"] if len(sorted_i) > 1 else intent_data["primary"]
 
 
-def _validate_captions(captions, article, intent_data, groq_client, url):
+def _validate_captions(captions, article, intent_data, groq_client):
     """Ensure Twitter caption fits within 280 chars."""
     twitter = captions.get("twitter", "")
     if len(twitter) > 280:

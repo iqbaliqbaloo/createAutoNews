@@ -1,0 +1,112 @@
+name: Breaking News Detector
+
+# Runs every 2 hours.
+# Phase 1 (always): lightweight keyword pre-check (~1 min billed, no ML).
+# Phase 2 (only when breaking signal found): full ML pipeline (~4-5 min).
+# Budget: ~360 typical runs/month × 1 min + ~18 heavy runs × 5 min ≈ 450 min/month.
+
+on:
+  schedule:
+    - cron: '0 */2 * * *'   # every 2 hours
+  workflow_dispatch:
+
+jobs:
+  detect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 4
+
+    concurrency:
+      group: breaking-detector
+      cancel-in-progress: true
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      # ── Restore pipeline state (needed for breaking_state.json) ──────────
+      - name: Restore pipeline state
+        uses: actions/cache@v4
+        with:
+          path: data/
+          key: pipeline-state-${{ github.run_id }}
+          restore-keys: |
+            pipeline-state-
+
+      - name: Create data directory
+        run: mkdir -p data
+
+      # ── Phase 1: lightweight pre-check (feedparser + requests only) ──────
+      - name: Install light dependencies
+        run: pip install -r requirements_light.txt
+
+      - name: Pre-check (keyword scan, no ML)
+        id: precheck
+        run: |
+          result=$(python breaking_detector.py --check-only 2>/dev/null | tail -1)
+          echo "has_breaking=${result:-false}" >> "$GITHUB_OUTPUT"
+
+      # ── Phase 2: full pipeline — only runs when breaking signal found ─────
+      - name: Cache ML models
+        if: steps.precheck.outputs.has_breaking == 'true'
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/huggingface
+          key: hf-models-v2
+
+      - name: Restore database
+        if: steps.precheck.outputs.has_breaking == 'true'
+        uses: actions/cache@v4
+        with:
+          path: state.db
+          key: state-db-${{ github.run_id }}
+          restore-keys: |
+            state-db-
+
+      - name: Install fonts
+        if: steps.precheck.outputs.has_breaking == 'true'
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y fonts-liberation fonts-dejavu
+
+      - name: Install full dependencies
+        if: steps.precheck.outputs.has_breaking == 'true'
+        run: |
+          pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Run breaking pipeline
+        if: steps.precheck.outputs.has_breaking == 'true'
+        run: python breaking_detector.py
+        env:
+          GROQ_API_KEY:           ${{ secrets.GROQ_API_KEY }}
+          GROQ_API_KEY_2:         ${{ secrets.GROQ_API_KEY_2 }}
+          FB_PAGE_TOKEN:          ${{ secrets.FB_PAGE_TOKEN }}
+          FB_PAGE_ID:             ${{ secrets.FB_PAGE_ID }}
+          IG_USER_ID:             ${{ secrets.IG_USER_ID }}
+          PIXABAY_API_KEY:        ${{ secrets.PIXABAY_API_KEY }}
+          PEXELS_API_KEY:         ${{ secrets.PEXELS_API_KEY }}
+          IMGBB_API_KEY:          ${{ secrets.IMGBB_API_KEY }}
+          TELEGRAM_BOT_TOKEN:     ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHANNEL_ID:    ${{ secrets.TELEGRAM_CHANNEL_ID }}
+          TZ: Asia/Karachi
+
+      # ── Persist state (always, to keep breaking_state.json current) ───────
+      - name: Save database
+        if: steps.precheck.outputs.has_breaking == 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: state.db
+          key: state-db-${{ github.run_id }}
+        continue-on-error: true
+
+      - name: Save pipeline state
+        uses: actions/cache/save@v4
+        with:
+          path: data/
+          key: pipeline-state-${{ github.run_id }}
+        continue-on-error: true

@@ -235,3 +235,47 @@ def post_to_instagram(text, image_path=None):
     except Exception as e:
         print("❌ IG exception:", e)
         return False
+
+
+# ─────────────────────────────────────────────
+# TELEGRAM (BOT API)
+# ─────────────────────────────────────────────
+
+def post_to_telegram(text, image_path=None):
+
+    token   = os.getenv("TELEGRAM_BOT_TOKEN")
+    channel = os.getenv("TELEGRAM_CHANNEL_ID")
+
+    if not token or not channel:
+        print("❌ Missing Telegram credentials")
+        return False
+
+    try:
+        if image_path and os.path.exists(image_path):
+            url = f"https://api.telegram.org/bot{token}/sendPhoto"
+            with open(image_path, "rb") as f:
+                r = requests.post(
+                    url,
+                    data={"chat_id": channel, "caption": text[:1024]},
+                    files={"photo": f},
+                    timeout=30,
+                )
+        else:
+            url = f"https://api.telegram.org/bot{token}/sendMessage"
+            r = requests.post(
+                url,
+                data={"chat_id": channel, "text": text[:4096]},
+                timeout=30,
+            )
+
+        result = r.json()
+        if result.get("ok"):
+            print("✅ Telegram posted")
+            return True
+
+        print("❌ Telegram failed:", result)
+        return False
+
+    except Exception as e:
+        print("❌ Telegram exception:", e)
+        return False

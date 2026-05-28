@@ -27,14 +27,32 @@ SCENE_TEMPLATES = {
         "secondary": ["trophy ceremony celebration", "athletic competition race", "team sport players"],
         "tertiary":  ["sports fan crowd cheering", "championship victory", "olympic sports"],
     },
+    "SPORTS_CRICKET": {
+        "primary":   ["cricket match stadium crowd", "cricket bat ball pitch", "cricket players action"],
+        "secondary": ["cricket celebration wicket", "cricket boundary six four", "cricket umpire field"],
+        "tertiary":  ["cricket fans cheering", "cricket trophy cup", "cricket team"],
+    },
+    "SPORTS_FOOTBALL": {
+        "primary":   ["football match stadium crowd", "soccer goal celebration", "football players action"],
+        "secondary": ["football penalty kick", "football referee card", "football trophy league"],
+        "tertiary":  ["football fans supporters", "football pitch aerial", "soccer team"],
+    },
+    "SPORTS_LIVE": {
+        "primary":   ["live sports action stadium", "sports match crowd excitement", "athletes competition"],
+        "secondary": ["sports celebration victory", "sports fans cheering", "championship match"],
+        "tertiary":  ["stadium lights night match", "sports trophy award", "team sport"],
+    },
 }
 
 FALLBACK_KEYWORDS = {
-    "WAR":      ["conflict"],
-    "POLITICS": ["government"],
-    "ECONOMY":  ["finance"],
-    "DISASTER": ["emergency"],
-    "SPORTS":   ["athletics"],
+    "WAR":             ["conflict"],
+    "POLITICS":        ["government"],
+    "ECONOMY":         ["finance"],
+    "DISASTER":        ["emergency"],
+    "SPORTS":          ["athletics"],
+    "SPORTS_CRICKET":  ["cricket"],
+    "SPORTS_FOOTBALL": ["football"],
+    "SPORTS_LIVE":     ["sports"],
 }
 
 

@@ -45,7 +45,7 @@ from scheduler_queue import (
 )
 
 # ── Step 12: Post + log ───────────────────────────────────────────────────
-from publisher import post_to_facebook, post_to_instagram
+from publisher import post_to_facebook, post_to_instagram, post_to_telegram
 from results_logger import log_result
 
 # ── Config ────────────────────────────────────────────────────────────────
@@ -264,6 +264,16 @@ def run_pipeline():
                 print("  Instagram ✔")
             else:
                 print("  Instagram failed")
+
+        if "telegram" in platforms_ready and "telegram" in platform_images:
+            tg_ok = post_to_telegram(captions["telegram"], platform_images["telegram"])
+            if tg_ok:
+                queue_mark_posted("telegram")
+                mark_posted(conn, article["hash"], article["title"], "telegram")
+                posted_platforms.append("telegram")
+                print("  Telegram ✔")
+            else:
+                print("  Telegram failed")
 
         # Update topic memory only if at least one platform posted
         if posted_platforms:

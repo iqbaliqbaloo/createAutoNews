@@ -18,19 +18,25 @@ MAX_ENTRIES  = 500   # keep rolling window — older entries are pruned
 
 
 def log_result(article_url, intent, clip_score, image_url,
-               platforms, status, retry_count=0):
+               platforms, status, retry_count=0,
+               breaking=False, pipeline="A",
+               cache_hit=False, library_fallback=False):
     """
     Append one entry to results.json.
 
-    Fields logged (per spec):
-      article_url  — source article URL
-      intent       — primary intent label (WAR / POLITICS / …)
-      clip_score   — best CLIP score achieved during image search
-      image_url    — Pixabay image URL selected
-      posted_at    — UTC ISO timestamp
-      platforms    — list of platforms successfully posted to
-      status       — "success" | "failed"
-      retry_count  — number of image-search retry loops used
+    Fields:
+      article_url      — source article URL
+      intent           — primary intent label
+      clip_score       — best CLIP score achieved
+      image_url        — image URL selected
+      posted_at        — UTC ISO timestamp
+      platforms        — platforms posted to
+      status           — "success" | "failed" | "queued"
+      retry_count      — image-search retry loops used
+      breaking         — True if posted via Pipeline B
+      pipeline         — "A" | "B" | "C"
+      cache_hit        — True if image came from cache
+      library_fallback — True if image came from local library
     """
     DATA_DIR.mkdir(exist_ok=True)
 
@@ -43,23 +49,26 @@ def log_result(article_url, intent, clip_score, image_url,
             entries = []
 
     entry = {
-        "article_url":  article_url,
-        "intent":       intent,
-        "clip_score":   round(float(clip_score), 4) if clip_score is not None else None,
-        "image_url":    image_url or "",
-        "posted_at":    datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
-        "platforms":    platforms or [],
-        "status":       status,
-        "retry_count":  retry_count,
+        "article_url":       article_url,
+        "intent":            intent,
+        "clip_score":        round(float(clip_score), 4) if clip_score is not None else None,
+        "image_url":         image_url or "",
+        "posted_at":         datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
+        "platforms":         platforms or [],
+        "status":            status,
+        "retry_count":       retry_count,
+        "breaking":          breaking,
+        "pipeline":          pipeline,
+        "cache_hit":         cache_hit,
+        "library_fallback":  library_fallback,
     }
 
     entries.append(entry)
 
-    # Keep rolling window
     if len(entries) > MAX_ENTRIES:
         entries = entries[-MAX_ENTRIES:]
 
     with open(RESULTS_FILE, "w") as f:
         json.dump(entries, f, indent=2)
 
-    logger.info(f"Logged result: {status} | intent={intent} | platforms={platforms} | clip={clip_score:.3f}")
+    logger.info(f"Logged: {status} | pipeline={pipeline} | intent={intent} | platforms={platforms}")

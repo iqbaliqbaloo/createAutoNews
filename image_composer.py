@@ -10,11 +10,29 @@ from PIL import Image, ImageDraw, ImageFont, ImageEnhance
 logger = logging.getLogger(__name__)
 
 BRAND_NAME  = "VisionaryMinds"
-TAG_RED     = (204, 41, 54)      # all category tags use this red (#CC2936)
-TAG_RED_DK  = (160, 20, 35)      # subtle darker shadow edge for depth
+TAG_RED     = (204, 41, 54)      # default red (#CC2936)
+TAG_RED_DK  = (160, 20, 35)
 
-# Optional logo file — place logo.png in the project root to use it.
+# Per-intent and per-league tag colours (spec v3)
+TAG_COLORS = {
+    # News intents
+    "WAR":      (204,  41,  54),   # #CC2936 (same as TAG_RED — explicit)
+    "POLITICS": ( 26,  86, 219),   # #1A56DB
+    "ECONOMY":  (  5, 122,  85),   # #057A55
+    "DISASTER": (208,  56,   1),   # #D03801
+    "SPORTS":   (108,  43, 217),   # #6C2BD9
+    # Sports / leagues
+    "CRICKET":  (108,  43, 217),   # #6C2BD9
+    "FOOTBALL": (  5, 122,  85),   # #057A55
+    "PSL":      (  0,  99,  65),   # #006341
+    "IPL":      (  0,  75, 160),   # #004BA0
+    "UCL":      (  0,  29,  61),   # #001D3D
+    "EPL":      ( 56,   0,  60),   # #38003C
+}
+
+# Optional logo file — checked in order; first match wins.
 _LOGO_SEARCH = [
+    os.path.join(os.path.dirname(__file__), "assets", "logo.png"),
     os.path.join(os.path.dirname(__file__), "logo.png"),
     os.path.join(os.path.dirname(__file__), "logo.jpg"),
     os.path.join(os.path.dirname(__file__), "vm_logo.png"),
@@ -67,22 +85,19 @@ PLATFORMS = {
     #     "source_size":    17,
     #     "source_omit_time": True,
     # },
-    # ── Telegram — uncomment + add bot token env var to post.yml to enable ──
-    # "telegram": {
-    #     "canvas":         (1280, 720),
-    #     "top_bar_h":      82,
-    #     "brand_x":        36,
-    #     "brand_y":        22,
-    #     "brand_size":     26,
-    #     "tag_right":      1245,
-    #     "tag_y":          22,
-    #     "tag_size":       22,
-    #     "headline_y":     520,
-    #     "headline_size":  54,
-    #     "headline_max_w": 1200,
-    #     "source_y":       690,
-    #     "source_size":    19,
-    # },
+    "telegram": {
+        "canvas":         (1280, 720),
+        "top_bar_h":      82,
+        "brand_x":        36,
+        "brand_y":        22,
+        "brand_size":     26,
+        "tag_right":      1245,
+        "tag_y":          22,
+        "tag_size":       22,
+        "headline_y":     520,
+        "headline_size":  54,
+        "headline_max_w": 1200,
+    },
 }
 
 # ── Font paths ─────────────────────────────────────────────────────────────
@@ -246,35 +261,28 @@ def _wrap_headline(draw, text, font, max_width):
 
 # ── Brand element (top-left) ───────────────────────────────────────────────
 
-def _draw_brand(draw, canvas_img, cfg):
+def _draw_brand(draw, canvas_img, cfg, logo_placed=False):
     """
-    Render VisionaryMinds brand at top-left.
-    Uses logo.png if present in the project root, otherwise falls back to
-    a white "VM" badge so the layout is never empty.
+    Render VisionaryMinds brand name at top-left.
+    When logo_placed=True the 80×80 logo has already been composited onto the
+    canvas at (40, 40); the brand name text starts to the right of it.
+    Otherwise a white "VM" badge is drawn as fallback.
     """
-    bx   = cfg["brand_x"]
     by   = cfg["brand_y"]
     size = cfg["brand_size"]
     font = _load_font(size, bold=True)
-    cx   = bx
 
-    logo = _load_logo()
-
-    if logo:
-        # Logo is circular (square after _make_circular), scale to brand height + generous padding
-        logo_h = size + 18   # slightly taller than the text for visual weight
-        logo_r = logo.resize((logo_h, logo_h), Image.LANCZOS)
-        # Vertically centre the circle relative to brand text
-        logo_y = by - (logo_h - size) // 2
-        canvas_img.paste(logo_r, (cx, max(0, logo_y)), logo_r)
-        cx += logo_h + 10
+    if logo_placed:
+        # Logo sits at (40, 40) with size 80 — text starts right of it
+        cx = 40 + 80 + 10
     else:
         # Fallback: white rounded "VM" badge
+        bx = cfg["brand_x"]
+        cx = bx
         mark_font = _load_font(max(size - 8, 12), bold=True)
         mb = draw.textbbox((0, 0), "VM", font=mark_font)
         mw, mh = mb[2] - mb[0], mb[3] - mb[1]
         box_w, box_h = mw + 14, mh + 10
-        # Align badge vertically to the brand text cap-height
         badge_y = by + max(0, (size - box_h) // 2)
         draw.rounded_rectangle(
             [cx, badge_y, cx + box_w, badge_y + box_h],
@@ -286,7 +294,6 @@ def _draw_brand(draw, canvas_img, cfg):
         )
         cx += box_w + 10
 
-    # Brand name text
     tb = draw.textbbox((0, 0), BRAND_NAME, font=font)
     text_y = by + max(0, ((size + 8) - (tb[3] - tb[1])) // 2) - tb[1]
     draw.text((cx, text_y), BRAND_NAME, font=font, fill=(255, 255, 255))
@@ -294,26 +301,28 @@ def _draw_brand(draw, canvas_img, cfg):
 
 # ── Category tag (top-right, always red) ──────────────────────────────────
 
-def _draw_category_tag(draw, label, cfg):
+def _draw_category_tag(draw, label, cfg, color=None):
     """
-    Render the category tag at top-right as a RED rectangular box with
-    white bold text. All intents use the same red — brand consistency.
+    Render the category tag at top-right.
+    color: RGB tuple override; falls back to TAG_COLORS lookup then TAG_RED.
     """
     rx   = cfg["tag_right"]
     ry   = cfg["tag_y"]
     size = cfg["tag_size"]
     font = _load_font(size, bold=True)
 
+    fill = color or TAG_COLORS.get(label.upper(), TAG_RED)
+
     pad_x, pad_y = 16, 8
     tb = draw.textbbox((0, 0), label, font=font)
     tw, th = tb[2] - tb[0], tb[3] - tb[1]
     tag_w  = tw + pad_x * 2
     tag_h  = th + pad_y * 2
-    tag_x  = rx - tag_w     # right-align
+    tag_x  = rx - tag_w
 
     draw.rounded_rectangle(
         [tag_x, ry, tag_x + tag_w, ry + tag_h],
-        radius=4, fill=TAG_RED,
+        radius=4, fill=fill,
     )
     draw.text(
         (tag_x + pad_x - tb[0], ry + pad_y - tb[1]),
@@ -341,7 +350,7 @@ def _relative_time(published_at):
 # ── Core composition ───────────────────────────────────────────────────────
 
 def compose_image(image_url, platform, intent, headline, source_name,
-                  published_at=None, image_path=None):
+                  published_at=None, image_path=None, tag_color=None):
     """
     Compose a single branded image for the given platform.
 
@@ -382,14 +391,22 @@ def compose_image(image_url, platform, intent, headline, source_name,
     base = Image.alpha_composite(base, _bottom_gradient(W, H))
     base = Image.alpha_composite(base, _top_bar_overlay(W, H, cfg["top_bar_h"]))
 
+    # ── Logo overlay — top-left, all platforms ─────────────────────────────
+    _logo = _load_logo()
+    logo_placed = False
+    if _logo:
+        _logo_r = _logo.resize((80, 80), Image.LANCZOS)
+        base.paste(_logo_r, (40, 40), _logo_r)
+        logo_placed = True
+
     canvas = base.convert("RGB")
     draw   = ImageDraw.Draw(canvas)
 
-    # ── TOP LEFT: brand ───────────────────────────────────────────────────
-    _draw_brand(draw, canvas, cfg)
+    # ── TOP LEFT: brand name (logo already composited above) ──────────────
+    _draw_brand(draw, canvas, cfg, logo_placed=logo_placed)
 
     # ── TOP RIGHT: category tag ───────────────────────────────────────────
-    _draw_category_tag(draw, intent, cfg)
+    _draw_category_tag(draw, intent, cfg, color=tag_color)
 
     # ── BOTTOM: headline (large, bold, white, max 2 lines, centred) ───────
     headline_font = _load_font(cfg["headline_size"], bold=True)
@@ -409,11 +426,12 @@ def compose_image(image_url, platform, intent, headline, source_name,
 # ── Public entry point ─────────────────────────────────────────────────────
 
 def save_platform_images(image_url, intent, headline, source_name,
-                         published_at=None, output_dir=None, image_path=None):
+                         published_at=None, output_dir=None, image_path=None,
+                         tag_color=None):
     """
     Generate and save a separate image for every active platform.
-    image_path: pre-downloaded temp file from pixabay_searcher (used instead of
-                re-downloading from image_url, eliminating network-failure blanks).
+    tag_color: optional RGB tuple to override the category tag colour (used by
+               sports_tracker for league-specific colours).
     Returns dict mapping platform name → file path.
     """
     if output_dir is None:
@@ -423,7 +441,8 @@ def save_platform_images(image_url, intent, headline, source_name,
     for platform in PLATFORMS:
         try:
             img  = compose_image(image_url, platform, intent, headline,
-                                 source_name, published_at, image_path=image_path)
+                                 source_name, published_at, image_path=image_path,
+                                 tag_color=tag_color)
             path = os.path.join(output_dir, f"{platform}.jpg")
             img.save(path, "JPEG", quality=92, optimize=True)
             paths[platform] = path

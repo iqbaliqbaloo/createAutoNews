@@ -9,20 +9,26 @@ DATA_DIR = Path(__file__).parent / "data"
 MEMORY_FILE = DATA_DIR / "topic_memory.json"
 COOLDOWN_HOURS = 2
 
-INTENTS = ["WAR", "POLITICS", "ECONOMY", "DISASTER", "SPORTS"]
+INTENTS = [
+    "WAR", "POLITICS", "ECONOMY", "DISASTER", "SPORTS",
+    "SPORTS_CRICKET", "SPORTS_FOOTBALL", "SPORTS_LIVE",
+]
 
 
 # ── I/O ────────────────────────────────────────────────────────────────────
 
 def _load():
     DATA_DIR.mkdir(exist_ok=True)
+    defaults = {intent: None for intent in INTENTS}
     if MEMORY_FILE.exists():
         try:
             with open(MEMORY_FILE, "r") as f:
-                return json.load(f)
+                stored = json.load(f)
+            defaults.update(stored)   # old keys preserved; new keys defaulted
+            return defaults
         except Exception:
             pass
-    return {intent: None for intent in INTENTS}
+    return defaults
 
 
 def _save(memory):

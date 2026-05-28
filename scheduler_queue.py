@@ -23,6 +23,7 @@ QUEUE_FILE = DATA_DIR / "queue.json"
 COOLDOWNS = {
     "facebook":  timedelta(minutes=30),
     "instagram": timedelta(minutes=45),
+    "telegram":  timedelta(minutes=20),
 }
 # Instagram must trail Facebook by at least this much within the same session
 IG_FB_OFFSET = timedelta(minutes=15)
@@ -38,7 +39,7 @@ def _load():
                 return json.load(f)
         except Exception:
             pass
-    return {"last_posted": {"facebook": None, "instagram": None}}
+    return {"last_posted": {"facebook": None, "instagram": None, "telegram": None}}
 
 
 def _save(data):
