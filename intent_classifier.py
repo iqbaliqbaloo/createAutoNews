@@ -77,27 +77,30 @@ RULES — Intent:
 RULES — Facebook caption (max 500 chars):
 - Start: "BREAKING: {{one-sentence summary}}"
 - 2-3 factual sentences, present tense, no speculation
-- End with article URL and 3-5 hashtags including #VisionaryMinds #BreakingNews
+- End with 3-5 hashtags including #VisionaryMinds #BreakingNews
+- Do NOT include any URL or link
 - Max 2 emojis, none in first line
 
 RULES — Instagram caption (max 300 visible chars):
 - Start: "BREAKING: {{summary}} 🔴"
 - 1-2 punchy sentences, each on its own line
-- Include: "🔗 Link in bio for full story"
+- Do NOT include any URL or link — no "link in bio", no article link
 - 15-20 hashtags including #VisionaryMinds #BreakingNews #WorldNews
 - Detect location → add as hashtag if found
 
-RULES — Twitter caption (HARD LIMIT 250 chars — URL adds 23 more = 273 total):
+RULES — Twitter caption (HARD LIMIT 280 chars total):
 - Start: "🔴 BREAKING: {{max 15-word summary}}"
 - 1 sentence context max
-- End with article URL + MAX 2 hashtags including #VisionaryMinds
-- MUST be under 250 chars before the URL
+- End with MAX 2 hashtags including #VisionaryMinds
+- Do NOT include any URL or link
+- MUST be under 280 chars
 
 RULES — Telegram caption (max 800 chars):
 - Start: "🔴 **BREAKING: {{summary}}**"
 - 3-4 factual sentences (most detailed version)
 - Include who/what/where/when
-- End with article URL and 3-5 hashtags including #VisionaryMinds #BreakingNews
+- End with 3-5 hashtags including #VisionaryMinds #BreakingNews
+- Do NOT include any URL or link
 - Use **bold** for headline only
 
 Intent hashtag reference: {intent_tags}
@@ -153,14 +156,14 @@ def _normalise_intent(intent_data):
 
 
 def _validate_captions(captions, article, intent_data, groq_client, url):
-    """Ensure Twitter caption fits within 250 chars (leaves room for URL)."""
+    """Ensure Twitter caption fits within 280 chars."""
     twitter = captions.get("twitter", "")
-    if len(twitter) > 250:
-        captions["twitter"] = _trim_twitter(twitter, article, groq_client, url)
+    if len(twitter) > 280:
+        captions["twitter"] = _trim_twitter(twitter, article, groq_client)
     return captions
 
 
-def _trim_twitter(caption, article, groq_client, url):
+def _trim_twitter(caption, article, groq_client):
     title = article.get("title", "")[:100]
     try:
         resp = groq_client.chat.completions.create(
@@ -168,12 +171,12 @@ def _trim_twitter(caption, article, groq_client, url):
             messages=[
                 {
                     "role": "system",
-                    "content": "You write ultra-concise tweets. Return ONLY the tweet text — no quotes, no explanation.",
+                    "content": "You write ultra-concise tweets. Return ONLY the tweet text — no quotes, no URLs, no explanation.",
                 },
                 {
                     "role": "user",
                     "content": (
-                        f"Rewrite this tweet to be UNDER 250 characters. Keep #VisionaryMinds and one other hashtag.\n\n"
+                        f"Rewrite this tweet to be UNDER 280 characters. No URLs. Keep #VisionaryMinds and one other hashtag.\n\n"
                         f"Original: {caption}\nArticle: {title}"
                     ),
                 },
@@ -182,14 +185,13 @@ def _trim_twitter(caption, article, groq_client, url):
             max_tokens=120,
         )
         trimmed = resp.choices[0].message.content.strip()
-        return trimmed[:250]
+        return trimmed[:280]
     except Exception:
-        return caption[:247] + "..."
+        return caption[:277] + "..."
 
 
 def _fallback_result(article):
     title = (article.get("title", "Breaking News") or "Breaking News")[:120]
-    url = article.get("url", "")
     return {
         "intent": {
             "intents": [{"label": l, "score": 0.2} for l in INTENTS],
@@ -200,20 +202,17 @@ def _fallback_result(article):
         "captions": {
             "facebook": (
                 f"BREAKING: {title}\n\n"
-                f"{url}\n\n"
                 f"#BreakingNews #WorldNews #VisionaryMinds #VMUpdates"
             ),
             "instagram": (
                 f"BREAKING: {title} 🔴\n\n"
-                f"🔗 Link in bio for full story\n\n"
                 f"#BreakingNews #WorldNews #VisionaryMinds #VMUpdates #News #CurrentEvents"
             ),
             "twitter": (
-                f"🔴 BREAKING: {title[:180]} {url} #VisionaryMinds"
+                f"🔴 BREAKING: {title[:240]} #VisionaryMinds"
             )[:280],
             "telegram": (
                 f"🔴 **BREAKING: {title}**\n\n"
-                f"🔗 {url}\n\n"
                 f"#BreakingNews #WorldNews #VisionaryMinds #VMUpdates"
             ),
         },

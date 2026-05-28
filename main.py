@@ -176,12 +176,12 @@ def run_pipeline():
         _sep()
         print("[STEP 8] IMAGE SEARCH + CLIP VALIDATION")
         _sep()
-        image_url, best_clip, retry_count = search_with_clip_validation(
+        image_url, best_clip, retry_count, best_image_path = search_with_clip_validation(
             intent_result, article
         )
-        print(f"Image selected: CLIP={best_clip:.3f}, retries={retry_count}")
-        if not image_url:
-            print("  No Pixabay image found — will use dark fallback in composer")
+        print(f"Image selected: CLIP={best_clip:.3f}, retries={retry_count}, file={'ok' if best_image_path else 'NONE'}")
+        if not best_image_path:
+            print("  WARNING: no image file — dark placeholder will be used")
 
         # ── STEP 9: IMAGE COMPOSITION ──────────────────────────────────────
         _sep()
@@ -196,6 +196,7 @@ def run_pipeline():
             article["title"],
             source_display,
             published_at,
+            image_path=best_image_path,   # use pre-downloaded file directly
         )
         print(f"Images composed: {list(platform_images.keys())}")
 
@@ -279,12 +280,17 @@ def run_pipeline():
             retry_count=retry_count,
         )
 
-        # Cleanup temp image files
+        # Cleanup temp image files (platform images + original download)
         for path in platform_images.values():
             try:
                 os.unlink(path)
             except Exception:
                 pass
+        try:
+            if best_image_path and os.path.exists(best_image_path):
+                os.unlink(best_image_path)
+        except Exception:
+            pass
 
         # ── Summary ────────────────────────────────────────────────────────
         _sep("═")
