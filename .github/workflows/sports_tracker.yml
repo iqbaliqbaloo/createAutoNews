@@ -104,6 +104,7 @@ jobs:
         if: steps.matchcheck.outputs.has_match == 'true'
         run: python sports_tracker.py
         env:
+          MAKE_WEBHOOK_URL: ${{ secrets.MAKE_WEBHOOK_URL }}
           GROQ_API_KEY:              ${{ secrets.GROQ_API_KEY }}
           FB_PAGE_TOKEN:             ${{ secrets.FB_PAGE_TOKEN }}
           FB_PAGE_ID:                ${{ secrets.FB_PAGE_ID }}
