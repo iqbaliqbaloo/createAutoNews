@@ -59,77 +59,47 @@ def upload_to_imgbb(image_path, retries=3):
 # ─────────────────────────────────────────────
 
 def post_to_facebook(text, image_path=None):
-
-    token   = os.getenv("FB_PAGE_TOKEN")
-    page_id = os.getenv("FB_PAGE_ID")
-
-    if not token or not page_id:
-        print("❌ Missing FB credentials")
+    """
+    Instead of calling FB Graph API directly (blocked),
+    we send the post data to a Make.com webhook.
+    Make.com then posts to your Facebook Page using
+    their own approved Meta app — no developer review needed.
+    """
+ 
+    webhook_url = os.getenv("MAKE_WEBHOOK_URL")
+ 
+    if not webhook_url:
+        print("❌ Missing MAKE_WEBHOOK_URL in environment")
         return False
-
-    def safe_json(r):
-        try:
-            return r.json()
-        except:
-            return {}
-
+ 
     try:
+        # Upload image to ImgBB first so Make.com can fetch it via URL
         img_url = upload_to_imgbb(image_path) if image_path else None
-
-        # STEP 1 — URL POST
-        if img_url:
-            r = requests.post(
-                f"{GRAPH_URL}/{page_id}/photos",
-                data={
-                    "caption": text,
-                    "url": img_url,
-                    "access_token": token
-                },
-                timeout=30
-            )
-
-            if "id" in safe_json(r):
-                print("✅ FB posted (imgbb URL)")
-                return True
-
-        # STEP 2 — FILE POST
-        if image_path and os.path.exists(image_path):
-            with open(image_path, "rb") as img:
-                r = requests.post(
-                    f"{GRAPH_URL}/{page_id}/photos",
-                    data={
-                        "caption": text,
-                        "access_token": token
-                    },
-                    files={"source": img},
-                    timeout=30
-                )
-
-            if "id" in safe_json(r):
-                print("✅ FB posted (file upload)")
-                return True
-
-        # STEP 3 — TEXT ONLY
+ 
+        payload = {
+            "message": text,
+            "image_url": img_url or ""   # empty string if no image
+        }
+ 
+        print(f"  Sending to Make.com webhook... (image={'yes' if img_url else 'no'})")
+ 
         r = requests.post(
-            f"{GRAPH_URL}/{page_id}/feed",
-            data={
-                "message": text,
-                "access_token": token
-            },
+            webhook_url,
+            json=payload,
             timeout=30
         )
-
-        if "id" in safe_json(r):
-            print("✅ FB text posted")
+ 
+        # Make.com returns "Accepted" (200) when it receives the webhook
+        if r.status_code == 200:
+            print("✅ FB posted via Make.com")
             return True
-
-        print("❌ FB failed:", safe_json(r))
+ 
+        print(f"❌ Make.com webhook failed: {r.status_code} {r.text}")
         return False
-
+ 
     except Exception as e:
-        print("❌ FB exception:", e)
+        print(f"❌ Make.com exception: {e}")
         return False
-
 
 # ─────────────────────────────────────────────
 # INSTAGRAM (FIXED + CLEAN)

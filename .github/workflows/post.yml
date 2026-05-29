@@ -73,6 +73,7 @@ jobs:
             python main.py && break || sleep 15
           done
         env:
+          MAKE_WEBHOOK_URL: ${{ secrets.MAKE_WEBHOOK_URL }}
           GROQ_API_KEY:    ${{ secrets.GROQ_API_KEY }}
           GROQ_API_KEY_2:  ${{ secrets.GROQ_API_KEY_2 }}
           FB_PAGE_TOKEN:   ${{ secrets.FB_PAGE_TOKEN }}
