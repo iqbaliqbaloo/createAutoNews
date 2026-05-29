@@ -21,7 +21,7 @@ DATA_DIR  = Path(__file__).parent / "data"
 QUEUE_FILE = DATA_DIR / "queue.json"
 
 COOLDOWNS = {
-    "facebook":  timedelta(minutes=30),
+    "facebook":  timedelta(minutes=5),
     "instagram": timedelta(minutes=45),
     "telegram":  timedelta(minutes=20),
 }
