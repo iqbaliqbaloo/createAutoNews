@@ -1,3 +1,5 @@
+import re
+
 # Maps intent labels to Pixabay search keyword groups.
 # Used by pixabay_searcher.py to drive image search + CLIP retry loops.
 
@@ -55,16 +57,43 @@ FALLBACK_KEYWORDS = {
     "SPORTS_LIVE":     ["sports"],
 }
 
+# Words that add no search value when extracted from a headline
+_SKIP_WORDS = {
+    "a", "an", "the", "and", "or", "but", "in", "on", "at", "to", "for",
+    "of", "with", "is", "are", "was", "were", "has", "have", "had", "be",
+    "been", "this", "that", "says", "said", "report", "reports", "reported",
+    "breaking", "update", "latest", "new", "may", "will", "can", "over",
+    "into", "it", "its", "as", "by", "from", "not", "after", "amid",
+    "sources", "officials", "government", "world", "news", "just",
+}
 
-def get_search_keywords(intent_result, retry_loop=0):
+
+def _article_keywords(title, max_words=4):
+    """
+    Extract meaningful Pixabay search terms from a news headline.
+    Returns a list with one compound phrase built from the most significant words.
+    """
+    if not title:
+        return []
+    clean = re.sub(r"[^a-zA-Z0-9\s]", " ", title.lower())
+    words = [w for w in clean.split() if w not in _SKIP_WORDS and len(w) > 2]
+    if not words:
+        return []
+    phrase = " ".join(words[:max_words])
+    return [phrase]
+
+
+def get_search_keywords(intent_result, article=None, retry_loop=0):
     """
     Return a list of Pixabay search terms based on intent and retry loop.
 
     retry_loop:
-      0 → primary keywords (or merged primary+secondary if ambiguous)
-      1 → secondary keywords
-      2 → tertiary keywords
-      3+ → generic fallback keyword
+      0 → article-specific keywords extracted from headline (unique per story)
+          falls back to intent primary if no article provided
+      1 → intent primary keywords (or merged primary+secondary if ambiguous)
+      2 → intent secondary keywords
+      3 → intent tertiary keywords
+      4+ → generic fallback keyword
     """
     primary   = intent_result["intent"]["primary"]
     secondary = intent_result["intent"].get("secondary", primary)
@@ -78,11 +107,15 @@ def get_search_keywords(intent_result, retry_loop=0):
     tmpl_secondary = SCENE_TEMPLATES.get(secondary, tmpl_primary)
 
     if retry_loop == 0:
+        # Use article-specific keywords so each story gets a unique, topic-matched image
+        if article:
+            kws = _article_keywords(article.get("title", ""))
+            if kws:
+                return kws
+        # No article — fall straight to intent primary
         if not ambiguous and primary_score >= 0.50:
             return list(tmpl_primary["primary"])
-        # Ambiguous → merge primary + secondary pools
         merged = list(tmpl_primary["primary"]) + list(tmpl_secondary["primary"])
-        # Deduplicate while preserving order
         seen, out = set(), []
         for kw in merged:
             if kw not in seen:
@@ -91,10 +124,22 @@ def get_search_keywords(intent_result, retry_loop=0):
         return out[:4]
 
     elif retry_loop == 1:
-        return list(tmpl_primary["secondary"])
+        # Intent primary (was loop=0) — first intent-level fallback
+        if not ambiguous and primary_score >= 0.50:
+            return list(tmpl_primary["primary"])
+        merged = list(tmpl_primary["primary"]) + list(tmpl_secondary["primary"])
+        seen, out = set(), []
+        for kw in merged:
+            if kw not in seen:
+                seen.add(kw)
+                out.append(kw)
+        return out[:4]
 
     elif retry_loop == 2:
-        return list(tmpl_primary["tertiary"])   # always stay in primary intent's topic
+        return list(tmpl_primary["secondary"])
+
+    elif retry_loop == 3:
+        return list(tmpl_primary["tertiary"])
 
     else:
         return list(FALLBACK_KEYWORDS.get(primary, ["news"]))

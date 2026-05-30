@@ -17,13 +17,15 @@ CLIP_ACCEPT_THRESHOLD    = 0.27
 MAX_RETRY_LOOPS          = 3
 PIXABAY_RESULTS_PER_CALL = 5
 
-DATA_DIR          = "data"
-IMAGE_CACHE_FILE  = os.path.join(DATA_DIR, "image_cache.json")
-RATE_LIMIT_FILE   = os.path.join(DATA_DIR, "rate_limit.json")
-IMAGE_LIBRARY_DIR = "image_library"
+DATA_DIR            = "data"
+IMAGE_CACHE_FILE    = os.path.join(DATA_DIR, "image_cache.json")
+RATE_LIMIT_FILE     = os.path.join(DATA_DIR, "rate_limit.json")
+USED_IMAGES_FILE    = os.path.join(DATA_DIR, "used_images.json")
+IMAGE_LIBRARY_DIR   = "image_library"
 
-IMAGE_CACHE_TTL_SECONDS = 21600   # 6 hours
-PIXABAY_HOURLY_LIMIT    = 80
+IMAGE_CACHE_TTL_SECONDS    = 21600   # 6 hours
+PIXABAY_HOURLY_LIMIT       = 80
+USED_IMAGE_COOLDOWN_SECS   = 86400   # 24 hours — skip recently posted images
 
 
 # ── Image cache ────────────────────────────────────────────────────────────
@@ -56,7 +58,9 @@ def _get_cached_urls(cache_key):
         )).total_seconds()
         if age < IMAGE_CACHE_TTL_SECONDS:
             logger.info(f"Image cache HIT: {cache_key} (age {int(age)}s)")
-            return entry["urls"]
+            urls = list(entry["urls"])
+            random.shuffle(urls)   # shuffle so we don't always score the same "best" first
+            return urls
     except Exception:
         pass
     return None
@@ -71,6 +75,55 @@ def _store_cached_urls(cache_key, urls):
         "cached_at": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
     }
     _save_cache(cache)
+
+
+# ── Recently-used image tracking ───────────────────────────────────────────
+
+def _load_used_images():
+    try:
+        with open(USED_IMAGES_FILE) as f:
+            return json.load(f)
+    except Exception:
+        return {}
+
+
+def _save_used_images(data):
+    os.makedirs(DATA_DIR, exist_ok=True)
+    try:
+        with open(USED_IMAGES_FILE, "w") as f:
+            json.dump(data, f, indent=2)
+    except Exception as e:
+        logger.warning(f"Used-images save failed: {e}")
+
+
+def _is_recently_used(url):
+    """True if this URL was posted within the last 24 hours."""
+    data = _load_used_images()
+    ts = data.get(url)
+    if not ts:
+        return False
+    try:
+        age = (datetime.now(timezone.utc) - datetime.fromisoformat(
+            ts.replace("Z", "+00:00")
+        )).total_seconds()
+        return age < USED_IMAGE_COOLDOWN_SECS
+    except Exception:
+        return False
+
+
+def _mark_image_used(url):
+    """Record that this URL was used now; prune entries older than 24 hours."""
+    if not url:
+        return
+    data = _load_used_images()
+    now = datetime.now(timezone.utc)
+    data = {
+        u: t for u, t in data.items()
+        if (now - datetime.fromisoformat(t.replace("Z", "+00:00"))).total_seconds()
+           < USED_IMAGE_COOLDOWN_SECS
+    }
+    data[url] = now.isoformat().replace("+00:00", "Z")
+    _save_used_images(data)
 
 
 # ── Rate-limit tracking ────────────────────────────────────────────────────
@@ -309,12 +362,16 @@ def search_with_clip_validation(intent_result, article=None):
     best_path  = None
 
     for loop in range(MAX_RETRY_LOOPS + 1):
-        keywords  = get_search_keywords(intent_result, retry_loop=loop)
+        keywords  = get_search_keywords(intent_result, article=article, retry_loop=loop)
         cache_key = f"{intent_label}_{keywords[0].replace(' ', '_')}" if keywords else f"{intent_label}_news"
         logger.info(f"Image search loop={loop} keywords={keywords}")
         print(f"  [Image loop {loop}] keywords: {keywords}")
 
         for img_url in _search_images(keywords, cache_key):
+            if _is_recently_used(img_url):
+                logger.info(f"Skipping recently used image: {img_url}")
+                continue
+
             path = _download_tmp(img_url)
             if not path:
                 continue
@@ -339,6 +396,7 @@ def search_with_clip_validation(intent_result, article=None):
 
             if best_score >= CLIP_ACCEPT_THRESHOLD:
                 print(f"  Accepted (CLIP={best_score:.3f}, loop={loop})")
+                _mark_image_used(best_url)
                 return best_url, best_score, loop, best_path
 
         if loop >= MAX_RETRY_LOOPS:
@@ -350,6 +408,8 @@ def search_with_clip_validation(intent_result, article=None):
         for fallback in ["world news", "global city skyline", "news background", "city crowd"]:
             fallback_key = f"{intent_label}_{fallback.replace(' ', '_')}"
             for img_url in _search_images([fallback], fallback_key):
+                if _is_recently_used(img_url):
+                    continue
                 path = _download_tmp(img_url)
                 if not path:
                     continue
@@ -367,6 +427,9 @@ def search_with_clip_validation(intent_result, article=None):
                     _cleanup(path)
             if best_path:
                 break
+
+    if best_url:
+        _mark_image_used(best_url)
 
     # ── Local image library — final fallback ──────────────────────────────
     if best_path is None:

@@ -170,7 +170,7 @@ def _fetch_image(url):
         return None
     try:
         r = requests.get(url, timeout=15)
-        if r.status_code != 200 or len(r.content) < 5000:
+        if r.status_code != 200 or len(r.content) < 8000:
             return None
         return Image.open(BytesIO(r.content)).convert("RGBA")
     except Exception as e:

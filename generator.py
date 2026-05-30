@@ -143,9 +143,14 @@ def safe_download(url):
 # ─────────────────────────────
 def _load_fonts():
     paths = [
+        # Linux (CI / production)
         "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
         "/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf",
         "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+        # Windows (local dev)
+        "C:/Windows/Fonts/arialbd.ttf",
+        "C:/Windows/Fonts/verdanab.ttf",
+        "C:/Windows/Fonts/arial.ttf",
     ]
     for p in paths:
         try:

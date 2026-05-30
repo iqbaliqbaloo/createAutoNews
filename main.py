@@ -27,6 +27,7 @@ from semantic_filter import embed_article, passes_semantic_filter
 # ── Steps 5 & 10: Intent + captions (loads CLIP via generator import) ─────
 from generator import clip_score               # loads clip-ViT-B-32
 from intent_classifier import classify_and_generate
+from virality_scorer import rank_by_virality
 
 # ── Step 6: Topic memory ──────────────────────────────────────────────────
 from topic_memory import get_best_intent, mark_intent_posted
@@ -46,11 +47,13 @@ from scheduler_queue import (
 
 # ── Step 12: Post + log ───────────────────────────────────────────────────
 from publisher import post_to_facebook, post_to_instagram, post_to_telegram
-from results_logger import log_result
+from results_logger import log_result, best_hours
+from trend_detector import trending_context_string
 
 # ── Config ────────────────────────────────────────────────────────────────
 PKT            = pytz.timezone("Asia/Karachi")
 FB_DAILY_LIMIT = 10
+IG_DAILY_LIMIT = 45
 ARTICLE_CAP    = 30   # hard cap per run (Step 1)
 CLASSIFY_TOP   = 10   # classify top-N fresh articles for intent selection
 
@@ -70,9 +73,15 @@ def run_pipeline():
 
     try:
         fb_count = get_today_count(conn, "facebook")
-        print(f"\nFacebook posts today: {fb_count}/{FB_DAILY_LIMIT}")
+        ig_count = get_today_count(conn, "instagram")
+        print(f"\nFacebook posts today:  {fb_count}/{FB_DAILY_LIMIT}")
+        print(f"Instagram posts today: {ig_count}/{IG_DAILY_LIMIT}")
+
+        # ── ENGAGEMENT TIME PREDICTOR ──────────────────────────────────────
+        best_hours()   # prints best PKT hours once enough history exists
+
         if fb_count >= FB_DAILY_LIMIT:
-            print("Daily limit reached — exiting.")
+            print("Facebook daily limit reached — exiting.")
             return
 
         # ── STEP 1: FETCH ──────────────────────────────────────────────────
@@ -84,6 +93,11 @@ def run_pipeline():
         if not articles:
             print("No articles found.")
             return
+
+        # ── TRENDING KEYWORD DETECTION ─────────────────────────────────────
+        trending_ctx = trending_context_string(articles)
+        if trending_ctx:
+            print(f"  {trending_ctx}")
 
         # ── STEP 2: FAKE NEWS FILTER ───────────────────────────────────────
         _sep()
@@ -137,17 +151,18 @@ def run_pipeline():
             print("All articles already posted.")
             return
 
+        # ── VIRALITY RANKING ───────────────────────────────────────────────
+        fresh = rank_by_virality(fresh)
+        print(f"  Top virality: {[(a['title'][:40], a['virality_score']) for a in fresh[:3]]}")
+
         # ── STEP 5: INTENT CLASSIFICATION + CAPTION GENERATION ────────────
         _sep()
         print(f"[STEP 5] INTENT CLASSIFICATION + CAPTIONS (top {CLASSIFY_TOP} articles)")
         _sep()
-        from groq import Groq
-        groq_client = Groq(api_key=os.getenv("GROQ_API_KEY"))
-
         classified = []
         for a in fresh[:CLASSIFY_TOP]:
             print(f"  → {a['title'][:70]}")
-            result = classify_and_generate(a, groq_client)
+            result = classify_and_generate(a, trending_context=trending_ctx)
             primary   = result["intent"]["primary"]
             top_score = max(
                 (i["score"] for i in result["intent"]["intents"] if i["label"] == primary),
@@ -166,7 +181,6 @@ def run_pipeline():
         _sep()
         article, intent_result = get_best_intent(classified)
         primary_intent = intent_result["intent"]["primary"]
-        secondary_intent = intent_result["intent"].get("secondary", primary_intent)
         print(f"Selected article: [{primary_intent}] {article['title'][:70]}")
 
         # ── STEP 7: SCENE TEMPLATE SELECTION ──────────────────────────────
@@ -236,6 +250,17 @@ def run_pipeline():
                     status="queued",
                     retry_count=retry_count,
                 )
+                # Images were composed but won't be posted — clean up now
+                for path in platform_images.values():
+                    try:
+                        os.unlink(path)
+                    except Exception:
+                        pass
+                try:
+                    if best_image_path and os.path.exists(best_image_path):
+                        os.unlink(best_image_path)
+                except Exception:
+                    pass
                 return
 
         # ── STEP 12: POST + LOG ────────────────────────────────────────────
@@ -255,11 +280,14 @@ def run_pipeline():
             else:
                 print("  Facebook failed")
 
-        if "instagram" in platforms_ready and "instagram" in platform_images:
+        if ig_count >= IG_DAILY_LIMIT:
+            print(f"  Instagram daily limit reached ({ig_count}/{IG_DAILY_LIMIT}) — skipping")
+        elif "instagram" in platforms_ready and "instagram" in platform_images:
             ig_ok = post_to_instagram(captions["instagram"], platform_images["instagram"])
             if ig_ok:
                 queue_mark_posted("instagram")
                 mark_posted(conn, article["hash"], article["title"], "instagram")
+                ig_count += 1
                 posted_platforms.append("instagram")
                 print("  Instagram ✔")
             else:
@@ -290,25 +318,28 @@ def run_pipeline():
             retry_count=retry_count,
         )
 
-        # Cleanup temp image files (platform images + original download)
-        for path in platform_images.values():
+        # Cleanup temp image files only on success; keep on failure for artifact upload
+        if posted_platforms:
+            for path in platform_images.values():
+                try:
+                    os.unlink(path)
+                except Exception:
+                    pass
             try:
-                os.unlink(path)
+                if best_image_path and os.path.exists(best_image_path):
+                    os.unlink(best_image_path)
             except Exception:
                 pass
-        try:
-            if best_image_path and os.path.exists(best_image_path):
-                os.unlink(best_image_path)
-        except Exception:
-            pass
 
         # ── Summary ────────────────────────────────────────────────────────
         _sep("═")
         print(f"STATUS:    {status.upper()}")
         print(f"POSTED TO: {posted_platforms}")
         print(f"INTENT:    {primary_intent}")
+        print(f"VIRALITY:  {article.get('virality_score', 'n/a')}/100")
         print(f"CLIP:      {best_clip:.3f}")
         print(f"FB COUNT:  {fb_count}/{FB_DAILY_LIMIT}")
+        print(f"IG COUNT:  {ig_count}/{IG_DAILY_LIMIT}")
         print(f"END:       {datetime.now(PKT).strftime('%I:%M %p PKT')}")
         _sep("═")
 

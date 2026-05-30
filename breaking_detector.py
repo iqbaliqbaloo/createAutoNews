@@ -1,7 +1,9 @@
 """
 Pipeline B — Breaking News Detector
 
-Runs every 5 minutes (breaking_detector.yml).
+Runs every 2 hours (breaking_detector.yml).
+Phase 1 (lightweight, always): keyword pre-check only — no ML.
+Phase 2 (full ML, conditional): runs only when Phase 1 finds a breaking signal.
 Scans the last 15 minutes of RSS, scores articles, and fast-posts
 anything that hits the breaking threshold while staying safely
 within daily/hourly caps.
@@ -205,7 +207,7 @@ def _check_posted_similarity(title, posted_today):
         sim = _cosine(emb, stored_emb)
         if sim > 0.80:
             return "duplicate", story
-        if 0.70 <= sim <= 0.85 and story.get("update_count", 0) < 2:
+        if sim >= 0.70 and story.get("update_count", 0) < 2:
             return "update", story
 
     return "new", None
@@ -281,7 +283,6 @@ def _run_fast_pipeline(article, caption_prefix=""):
     primary_intent = intent_result["intent"]["primary"]
 
     # 1 retry max for breaking news speed
-    from pixabay_searcher import MAX_RETRY_LOOPS as _orig
     import pixabay_searcher as _ps
     orig_loops = _ps.MAX_RETRY_LOOPS
     _ps.MAX_RETRY_LOOPS = 1

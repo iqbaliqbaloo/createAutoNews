@@ -6,11 +6,16 @@ from datetime import datetime, timezone, timedelta
 # ─── LOAD MODEL SAFELY ─────────────────────────────
 model = SentenceTransformer("all-MiniLM-L6-v2")
 
+# Cache of (old_titles, embeddings) — populated once per process so
+# title_already_posted() doesn't re-encode 200 titles on every call.
+_title_emb_cache = None
+
 
 # ─── INIT DB ───────────────────────────────────────
 
 def init_db():
     conn = sqlite3.connect("state.db")
+    conn.execute("PRAGMA journal_mode=WAL")
 
     conn.execute("""
         CREATE TABLE IF NOT EXISTS posted (
@@ -46,34 +51,31 @@ def already_posted(conn, url_hash):
 # ─── FAST TITLE DUPLICATE CHECK (OPTIMIZED) ───────
 
 def title_already_posted(conn, title, threshold=0.78):
+    global _title_emb_cache
 
     title = (title or "").strip()
     if not title:
         return False
 
-    rows = conn.execute("""
-        SELECT title FROM posted
-        WHERE posted_at >= datetime('now', '-3 days')
-        LIMIT 200
-    """).fetchall()
+    # Populate cache once per process — old titles don't change during a run
+    if _title_emb_cache is None:
+        rows = conn.execute("""
+            SELECT title FROM posted
+            WHERE posted_at >= datetime('now', '-3 days')
+            LIMIT 200
+        """).fetchall()
+        old_titles = [r[0] for r in rows if r[0]]
+        if old_titles:
+            _title_emb_cache = (old_titles, model.encode(old_titles, show_progress_bar=False))
+        else:
+            _title_emb_cache = ([], None)
 
-    if not rows:
+    old_titles, old_emb = _title_emb_cache
+    if not old_titles or old_emb is None:
         return False
 
-    old_titles = [r[0] for r in rows if r[0]]
-
-    if not old_titles:
-        return False
-
-    texts = [title] + old_titles
-
-    embeddings = model.encode(texts, show_progress_bar=False)
-
-    new_emb = embeddings[0:1]
-    old_emb = embeddings[1:]
-
+    new_emb = model.encode([title], show_progress_bar=False)
     sims = cosine_similarity(new_emb, old_emb)[0]
-
     return float(max(sims)) >= threshold
 
 

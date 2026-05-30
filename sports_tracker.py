@@ -27,7 +27,6 @@ DATA_DIR   = "data"
 STATE_FILE = os.path.join(DATA_DIR, "sports_state.json")
 
 FOOTBALL_API = "https://api.football-data.org/v4"
-HEADERS_FB   = {"X-Auth-Token": os.getenv("FOOTBALL_DATA_API_KEY", "")}
 
 COOLDOWN_MINUTES = 20
 
@@ -284,7 +283,8 @@ def _post_sports_update(match, captions, headline_text, league):
         "captions": captions,
     }
 
-    image_url, _, _, best_image_path = search_with_clip_validation(fake_intent_result)
+    fake_article = {"title": headline_text}
+    image_url, _, _, best_image_path = search_with_clip_validation(fake_intent_result, article=fake_article)
 
     platform_images = save_platform_images(
         image_url,
@@ -397,7 +397,7 @@ def _process_football(match):
 
     team1, team2 = match["teams"][0], match["teams"][1]
     score_text   = f"{team1} {home_score} – {away_score} {team2}"
-    update_text  = f"Minute: {data.get('minute', '?')}" if event_type != "FULL_TIME" else "Full Time"
+    update_text  = f"Minute: {data.get('minute') or '?'}" if event_type != "FULL_TIME" else "Full Time"
     captions     = _build_caption(match, event_type, score_text, update_text)
     headline     = f"{score_text} | {event_type.replace('_', ' ').title()}"
     league       = match.get("league", "FOOTBALL")

@@ -2,13 +2,18 @@ name: News Autoposter
 
 on:
   schedule:
-    - cron: '0 */4 * * *'   # every 4 hours
+    - cron: '30 3 * * *'    # 08:30 AM PKT — morning peak
+    - cron: '0  6 * * *'    # 11:00 AM PKT — late morning
+    - cron: '0  8 * * *'    # 01:00 PM PKT — lunch peak
+    - cron: '0 10 * * *'    # 03:00 PM PKT — afternoon
+    - cron: '0 14 * * *'    # 07:00 PM PKT — evening peak
+    - cron: '0 16 * * *'    # 09:00 PM PKT — prime time
   workflow_dispatch:
 
 jobs:
   post:
     runs-on: ubuntu-latest
-    timeout-minutes: 35
+    timeout-minutes: 40
 
     concurrency:
       group: autoposter
@@ -65,27 +70,36 @@ jobs:
           pip install --upgrade pip
           pip install -r requirements.txt
 
-      # ── Run pipeline (3 attempts with backoff) ───────────────────────────
+      # ── Run pipeline (3 attempts with backoff; exit 1 on total failure) ──
       - name: Run pipeline
         run: |
           for i in 1 2 3; do
             echo "=== Attempt $i ==="
-            python main.py && break || sleep 15
+            python main.py && exit 0
+            [ "$i" -lt 3 ] && sleep 15
           done
+          exit 1
         env:
-          MAKE_WEBHOOK_URL: ${{ secrets.MAKE_WEBHOOK_URL }}
-          GROQ_API_KEY:    ${{ secrets.GROQ_API_KEY }}
-          GROQ_API_KEY_2:  ${{ secrets.GROQ_API_KEY_2 }}
-          FB_PAGE_TOKEN:   ${{ secrets.FB_PAGE_TOKEN }}
-          FB_PAGE_ID:      ${{ secrets.FB_PAGE_ID }}
-          IG_USER_ID:      ${{ secrets.IG_USER_ID }}
-          PIXABAY_API_KEY:        ${{ secrets.PIXABAY_API_KEY }}
-          IMGBB_API_KEY:          ${{ secrets.IMGBB_API_KEY }}
-          FB_APP_ID:              ${{ secrets.FB_APP_ID }}
-          FB_APP_SECRET:          ${{ secrets.FB_APP_SECRET }}
-          TELEGRAM_BOT_TOKEN:     ${{ secrets.TELEGRAM_BOT_TOKEN }}
-          TELEGRAM_CHANNEL_ID:    ${{ secrets.TELEGRAM_CHANNEL_ID }}
+          MAKE_WEBHOOK_URL:    ${{ secrets.MAKE_WEBHOOK_URL }}
+          MAKE_WEBHOOK_URL_1:  ${{ secrets.MAKE_WEBHOOK_URL_1 }}
+          GROQ_API_KEY:        ${{ secrets.GROQ_API_KEY }}
+          GROQ_API_KEY_2:      ${{ secrets.GROQ_API_KEY_2 }}
+          PIXABAY_API_KEY:     ${{ secrets.PIXABAY_API_KEY }}
+          PEXELS_API_KEY:      ${{ secrets.PEXELS_API_KEY }}
+          IMGBB_API_KEY:       ${{ secrets.IMGBB_API_KEY }}
+          TELEGRAM_BOT_TOKEN:  ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHANNEL_ID: ${{ secrets.TELEGRAM_CHANNEL_ID }}
           TZ: Asia/Karachi
+
+      # ── Notify on failure ─────────────────────────────────────────────────
+      - name: Notify on pipeline failure
+        if: failure()
+        run: |
+          curl -s -X POST \
+            "https://api.telegram.org/bot${{ secrets.TELEGRAM_BOT_TOKEN }}/sendMessage" \
+            -d "chat_id=${{ secrets.TELEGRAM_CHANNEL_ID }}&text=⚠️ VisionaryMinds Autoposter FAILED — $(date '+%d %b %Y %H:%M UTC')" \
+            || true
+        continue-on-error: true
 
       # ── Persist DB ────────────────────────────────────────────────────────
       - name: Save database

@@ -65,17 +65,44 @@ def cooldown_remaining(intent):
         return 0
 
 
+def get_last_posted_intent():
+    """Return the intent that was most recently posted (or None)."""
+    memory = _load()
+    last_intent = None
+    last_ts     = None
+    for intent, ts in memory.items():
+        if not ts:
+            continue
+        try:
+            dt = datetime.fromisoformat(ts.replace("Z", "+00:00"))
+            if last_ts is None or dt > last_ts:
+                last_ts     = dt
+                last_intent = intent
+        except Exception:
+            pass
+    return last_intent
+
+
 def get_best_intent(articles_with_intents):
     """
     Given [(article, intent_result), …], return the pair whose primary intent
-    is NOT on cooldown.  If ALL are on cooldown, return the one with the least
-    remaining cooldown time.
+    is NOT on cooldown AND is not the same as the last posted intent.
+    Falls back gracefully if all options are suboptimal.
     """
-    # First pass: any article not on cooldown
+    last_intent = get_last_posted_intent()
+
+    # First pass: not on cooldown AND not a consecutive repeat
+    for article, intent_result in articles_with_intents:
+        primary = intent_result["intent"]["primary"]
+        if not is_on_cooldown(primary) and primary != last_intent:
+            logger.info(f"Topic memory: {primary} selected (diverse, off cooldown)")
+            return article, intent_result
+
+    # Second pass: not on cooldown (allow repeat if no diverse option)
     for article, intent_result in articles_with_intents:
         primary = intent_result["intent"]["primary"]
         if not is_on_cooldown(primary):
-            logger.info(f"Topic memory: {primary} is available")
+            logger.info(f"Topic memory: {primary} selected (off cooldown, repeat allowed)")
             return article, intent_result
 
     # All on cooldown — pick lowest remaining cooldown

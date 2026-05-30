@@ -13,7 +13,7 @@ on:
 jobs:
   detect:
     runs-on: ubuntu-latest
-    timeout-minutes: 4
+    timeout-minutes: 20
 
     concurrency:
       group: breaking-detector
@@ -83,8 +83,9 @@ jobs:
         if: steps.precheck.outputs.has_breaking == 'true'
         run: python breaking_detector.py
         env:
-          MAKE_WEBHOOK_URL: ${{ secrets.MAKE_WEBHOOK_URL }}
-          GROQ_API_KEY:           ${{ secrets.GROQ_API_KEY }}
+          MAKE_WEBHOOK_URL:   ${{ secrets.MAKE_WEBHOOK_URL }}
+          MAKE_WEBHOOK_URL_1: ${{ secrets.MAKE_WEBHOOK_URL_1 }}
+          GROQ_API_KEY:       ${{ secrets.GROQ_API_KEY }}
           GROQ_API_KEY_2:         ${{ secrets.GROQ_API_KEY_2 }}
           FB_PAGE_TOKEN:          ${{ secrets.FB_PAGE_TOKEN }}
           FB_PAGE_ID:             ${{ secrets.FB_PAGE_ID }}

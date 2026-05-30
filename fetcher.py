@@ -62,10 +62,13 @@ def fetch_feed(url, timeout=10):
     try:
         r = requests.get(url, headers=HEADERS, timeout=timeout)
 
-        # BASIC VALIDATION (IMPORTANT FIX)
-        if "xml" not in r.headers.get("Content-Type", "") and "<rss" not in r.text:
-            print(f"  ✗ Invalid RSS response: {url}")
-            return None
+        # BASIC VALIDATION — accept RSS, Atom, and plain-XML feeds
+        content_type = r.headers.get("Content-Type", "").lower()
+        if "xml" not in content_type and "rss" not in content_type:
+            text_start = r.text[:500].lower()
+            if not any(tag in text_start for tag in ("<rss", "<feed", "<channel", "<?xml")):
+                print(f"  ✗ Invalid RSS response: {url}")
+                return None
 
         return feedparser.parse(r.text)
 
@@ -115,21 +118,25 @@ def fetch_articles():
                 continue
             summary = clean_text(entry.get("summary", title))
 
+            published_at = None
+            if hasattr(entry, "published_parsed") and entry.published_parsed:
+                try:
+                    published_at = datetime(
+                        *entry.published_parsed[:6], tzinfo=timezone.utc
+                    ).isoformat()
+                except Exception:
+                    pass
+
             articles.append({
-                "title": title,
-                "summary": summary,
-                "url": link,
-                "source_url": url,
-                "source_type": source_type,
-
-                # FIX 1: event-based key (IMPORTANT)
-                "event_id": generate_event_key(title, summary),
-
-                # FIX 2: domain (for trust scoring later)
-                "domain": domain,
-
-                # FIX 3: better hash (article identity)
-                "hash": hashlib.md5(link.encode()).hexdigest()
+                "title":        title,
+                "summary":      summary,
+                "url":          link,
+                "source_url":   url,
+                "source_type":  source_type,
+                "published_at": published_at,
+                "event_id":     generate_event_key(title, summary),
+                "domain":       domain,
+                "hash":         hashlib.md5(link.encode()).hexdigest(),
             })
 
             count += 1

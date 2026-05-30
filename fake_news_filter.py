@@ -41,7 +41,6 @@ DOMAIN_SCORES = {
     "arynews.tv": 0.80,
     "samaa.tv": 0.78,
     "express.com.pk": 0.72,
-    "bbc.com": 1.0,   # also covers urdu.bbc.com
     # Tier 4 — opinionated but legitimate
     "foxnews.com": 0.65,
     "thehill.com": 0.72,

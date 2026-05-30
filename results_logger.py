@@ -72,3 +72,44 @@ def log_result(article_url, intent, clip_score, image_url,
         json.dump(entries, f, indent=2)
 
     logger.info(f"Logged: {status} | pipeline={pipeline} | intent={intent} | platforms={platforms}")
+
+
+def best_hours(min_entries: int = 10) -> list:
+    """
+    Engagement Time Predictor.
+    Reads results.json and returns the top 3 PKT hours that have produced
+    the most successful posts. Prints insights to stdout.
+    Returns list of best hours (int) or [] if not enough data yet.
+    """
+    import pytz
+    from collections import Counter
+
+    PKT = pytz.timezone("Asia/Karachi")
+
+    if not RESULTS_FILE.exists():
+        return []
+
+    try:
+        with open(RESULTS_FILE, "r") as f:
+            entries = json.load(f)
+    except Exception:
+        return []
+
+    successes = [e for e in entries if e.get("status") == "success"]
+    if len(successes) < min_entries:
+        print(f"  Engagement predictor: need {min_entries} posts, have {len(successes)} — building history")
+        return []
+
+    hour_counter = Counter()
+    for e in successes:
+        try:
+            utc_dt = datetime.fromisoformat(e["posted_at"].replace("Z", "+00:00"))
+            pkt_dt = utc_dt.astimezone(PKT)
+            hour_counter[pkt_dt.hour] += 1
+        except Exception:
+            pass
+
+    top_hours = [h for h, _ in hour_counter.most_common(3)]
+    top_str   = ", ".join(f"{h:02d}:00 PKT" for h in top_hours)
+    print(f"  Best posting hours (from {len(successes)} posts): {top_str}")
+    return top_hours
