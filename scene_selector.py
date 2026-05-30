@@ -5,56 +5,113 @@ import re
 
 SCENE_TEMPLATES = {
     "WAR": {
-        "primary":   ["battlefield military", "soldiers troops combat", "tanks armed forces", "military operation"],
-        "secondary": ["conflict zone destruction", "war damage rubble", "military vehicles", "armed conflict"],
-        "tertiary":  ["war refugees crisis", "military base", "defense forces"],
+        "primary":   ["battlefield military soldiers", "troops armed forces combat", "tanks military operation", "soldiers weapons war zone"],
+        "secondary": ["conflict zone destruction rubble", "war damage buildings", "military vehicles convoy", "armed conflict zone"],
+        "tertiary":  ["war refugees displaced crisis", "military base operation", "defense forces troops"],
     },
     "POLITICS": {
-        "primary":   ["press conference podium", "parliament building hall", "leader speech microphone"],
-        "secondary": ["political summit meeting", "voting election ballot", "government officials"],
-        "tertiary":  ["capitol building government", "diplomat handshake", "political rally"],
+        "primary":   ["press conference podium microphone", "parliament building government", "leader speech podium politics"],
+        "secondary": ["political summit meeting leaders", "voting election ballot box", "government officials delegation"],
+        "tertiary":  ["capitol building government hall", "diplomat handshake agreement", "political rally crowd"],
     },
     "ECONOMY": {
-        "primary":   ["stock market trading screen", "financial charts graphs", "currency exchange rates"],
-        "secondary": ["banking finance building", "economic data analysis", "wall street traders"],
-        "tertiary":  ["business meeting corporate", "money finance coins", "economic growth chart"],
+        "primary":   ["stock market trading screen numbers", "financial charts graphs economy", "currency exchange rates finance"],
+        "secondary": ["banking finance skyscraper building", "economic data analysis business", "wall street traders floor"],
+        "tertiary":  ["business meeting corporate boardroom", "money finance coins bills", "economic growth chart finance"],
     },
     "DISASTER": {
-        "primary":   ["flood rescue emergency", "earthquake destruction rubble", "disaster emergency response"],
-        "secondary": ["rescue teams search", "destroyed buildings collapse", "humanitarian aid relief"],
-        "tertiary":  ["emergency services helicopter", "natural disaster aftermath", "crisis response"],
+        "primary":   ["flood rescue emergency water", "earthquake destruction rubble collapse", "disaster emergency response team"],
+        "secondary": ["rescue teams search rubble", "destroyed buildings collapse aftermath", "humanitarian aid relief workers"],
+        "tertiary":  ["emergency helicopter rescue operation", "natural disaster aftermath destruction", "crisis response firefighters"],
     },
     "SPORTS": {
-        "primary":   ["stadium crowd match", "sports action competition athlete", "football cricket match"],
-        "secondary": ["trophy ceremony celebration", "athletic competition race", "team sport players"],
-        "tertiary":  ["sports fan crowd cheering", "championship victory", "olympic sports"],
+        "primary":   ["stadium crowd sports match action", "sports athletes competition field", "sports fans cheering stadium"],
+        "secondary": ["trophy ceremony celebration winners", "athletic competition race track", "team sport players match"],
+        "tertiary":  ["sports fans crowd cheering", "championship victory celebration", "olympic sports athletes"],
     },
     "SPORTS_CRICKET": {
-        "primary":   ["cricket match stadium crowd", "cricket bat ball pitch", "cricket players action"],
-        "secondary": ["cricket celebration wicket", "cricket boundary six four", "cricket umpire field"],
-        "tertiary":  ["cricket fans cheering", "cricket trophy cup", "cricket team"],
+        "primary":   ["cricket match stadium crowd players", "cricket bat ball pitch action", "cricket bowler batsman wicket"],
+        "secondary": ["cricket celebration wicket boundary", "cricket six four boundary shot", "cricket umpire field match"],
+        "tertiary":  ["cricket fans cheering stadium", "cricket trophy cup ceremony", "cricket team celebration"],
     },
     "SPORTS_FOOTBALL": {
-        "primary":   ["football match stadium crowd", "soccer goal celebration", "football players action"],
-        "secondary": ["football penalty kick", "football referee card", "football trophy league"],
-        "tertiary":  ["football fans supporters", "football pitch aerial", "soccer team"],
+        "primary":   ["football soccer match stadium crowd", "soccer goal celebration players", "football players action pitch"],
+        "secondary": ["football penalty kick goalkeeper", "football referee yellow card", "football trophy league champions"],
+        "tertiary":  ["football fans supporters stadium", "football pitch aerial view", "soccer team huddle"],
     },
     "SPORTS_LIVE": {
-        "primary":   ["live sports action stadium", "sports match crowd excitement", "athletes competition"],
-        "secondary": ["sports celebration victory", "sports fans cheering", "championship match"],
-        "tertiary":  ["stadium lights night match", "sports trophy award", "team sport"],
+        "primary":   ["live sports action stadium crowd", "sports match crowd excitement", "athletes competition stadium"],
+        "secondary": ["sports celebration victory trophy", "sports fans cheering stadium", "championship final match"],
+        "tertiary":  ["stadium lights night match", "sports trophy award ceremony", "team sport final"],
+    },
+    "TENNIS": {
+        "primary":   ["tennis match court players action", "tennis player serve racket ball", "tennis grand slam tournament"],
+        "secondary": ["tennis racket ball court clay", "tennis tournament championship match", "tennis doubles singles players"],
+        "tertiary":  ["wimbledon tennis court grass", "tennis player victory celebration", "tennis crowd stadium"],
+    },
+    "F1": {
+        "primary":   ["formula 1 racing car track", "f1 grand prix race circuit", "formula one car speed race"],
+        "secondary": ["racing pit stop team mechanics", "formula one drivers podium", "race track circuit aerial"],
+        "tertiary":  ["motorsport competition car race", "racing championship trophy", "f1 crash race incident"],
+    },
+    "BOXING": {
+        "primary":   ["boxing match fight ring punch", "boxer punch knockout gloves", "boxing ring fighters crowd"],
+        "secondary": ["boxing championship belt bout", "mma ufc fighters cage", "boxing arena crowd fight"],
+        "tertiary":  ["boxing training athlete gloves", "combat sport fight martial arts", "boxing champion belt"],
+    },
+    "BASKETBALL": {
+        "primary":   ["basketball nba game court players", "basketball player dunk shot", "basketball arena crowd match"],
+        "secondary": ["basketball shoot hoop net", "basketball game action players", "basketball championship final"],
+        "tertiary":  ["basketball team sport players", "basketball arena fans cheering", "basketball trophy victory"],
     },
 }
 
 FALLBACK_KEYWORDS = {
-    "WAR":             ["conflict"],
-    "POLITICS":        ["government"],
-    "ECONOMY":         ["finance"],
-    "DISASTER":        ["emergency"],
-    "SPORTS":          ["athletics"],
-    "SPORTS_CRICKET":  ["cricket"],
-    "SPORTS_FOOTBALL": ["football"],
-    "SPORTS_LIVE":     ["sports"],
+    "WAR":              ["war military conflict"],
+    "POLITICS":         ["government politics"],
+    "ECONOMY":          ["finance economy"],
+    "DISASTER":         ["disaster emergency"],
+    "SPORTS":           ["sports stadium"],
+    "SPORTS_CRICKET":   ["cricket match"],
+    "SPORTS_FOOTBALL":  ["football soccer"],
+    "SPORTS_LIVE":      ["live sports"],
+    "TENNIS":           ["tennis court"],
+    "F1":               ["formula 1 race"],
+    "BOXING":           ["boxing fight"],
+    "BASKETBALL":       ["basketball court"],
+}
+
+# Intent-specific broad fallbacks — used instead of generic "city crowd"
+# so even worst-case images are topically relevant
+BROAD_FALLBACKS = {
+    "WAR":              ["war soldiers military conflict", "battlefield armed forces", "military troops weapons"],
+    "POLITICS":         ["parliament government politics", "political leader speech", "government summit diplomacy"],
+    "ECONOMY":          ["stock market finance economy", "business trading finance", "economic growth chart"],
+    "DISASTER":         ["natural disaster emergency response", "rescue operation crisis", "disaster aftermath destruction"],
+    "SPORTS":           ["sports stadium crowd match", "athletes competition action", "championship sports"],
+    "SPORTS_CRICKET":   ["cricket match stadium players", "cricket bat ball pitch", "cricket players action"],
+    "SPORTS_FOOTBALL":  ["football soccer match stadium", "soccer players pitch goal", "football crowd stadium"],
+    "SPORTS_LIVE":      ["live sports match stadium", "sports crowd fans action", "championship final sports"],
+    "TENNIS":           ["tennis court players match", "tennis grand slam tournament", "tennis racket ball court"],
+    "F1":               ["formula 1 racing track", "grand prix race circuit", "racing car motorsport"],
+    "BOXING":           ["boxing ring match fighters", "boxing bout punch gloves", "boxing arena crowd"],
+    "BASKETBALL":       ["basketball court nba game", "basketball players dunk", "basketball match arena"],
+}
+
+# Prepended to article-extracted keywords so Pixabay gets topic context
+INTENT_CONTEXT_PREFIX = {
+    "WAR":              "war military conflict",
+    "POLITICS":         "politics government",
+    "ECONOMY":          "economy finance",
+    "DISASTER":         "disaster emergency",
+    "SPORTS":           "sports match",
+    "SPORTS_CRICKET":   "cricket match",
+    "SPORTS_FOOTBALL":  "football soccer match",
+    "SPORTS_LIVE":      "live sports",
+    "TENNIS":           "tennis court match",
+    "F1":               "formula 1 race",
+    "BOXING":           "boxing fight",
+    "BASKETBALL":       "basketball game",
 }
 
 # Words that add no search value when extracted from a headline
@@ -64,23 +121,28 @@ _SKIP_WORDS = {
     "been", "this", "that", "says", "said", "report", "reports", "reported",
     "breaking", "update", "latest", "new", "may", "will", "can", "over",
     "into", "it", "its", "as", "by", "from", "not", "after", "amid",
-    "sources", "officials", "government", "world", "news", "just",
+    "sources", "officials", "government", "world", "news", "just", "amid",
+    "vs", "against", "between",
 }
 
 
-def _article_keywords(title, max_words=4):
+def _article_keywords(title, intent="POLITICS", max_words=3):
     """
-    Extract meaningful Pixabay search terms from a news headline.
-    Returns a list with one compound phrase built from the most significant words.
+    Extract article-specific keywords from the headline and prepend the
+    intent context prefix — so Pixabay always knows what topic we want.
+
+    Example: title="Pakistan wins first ODI", intent="SPORTS_CRICKET"
+             → "cricket match pakistan wins odi"
     """
     if not title:
         return []
     clean = re.sub(r"[^a-zA-Z0-9\s]", " ", title.lower())
     words = [w for w in clean.split() if w not in _SKIP_WORDS and len(w) > 2]
+    prefix = INTENT_CONTEXT_PREFIX.get(intent, "news")
     if not words:
-        return []
-    phrase = " ".join(words[:max_words])
-    return [phrase]
+        return [prefix]
+    article_phrase = " ".join(words[:max_words])
+    return [f"{prefix} {article_phrase}"]
 
 
 def get_search_keywords(intent_result, article=None, retry_loop=0):
@@ -88,12 +150,11 @@ def get_search_keywords(intent_result, article=None, retry_loop=0):
     Return a list of Pixabay search terms based on intent and retry loop.
 
     retry_loop:
-      0 → article-specific keywords extracted from headline (unique per story)
-          falls back to intent primary if no article provided
-      1 → intent primary keywords (or merged primary+secondary if ambiguous)
-      2 → intent secondary keywords
-      3 → intent tertiary keywords
-      4+ → generic fallback keyword
+      0 → article-specific keywords prefixed with intent context (unique per story)
+      1 → intent primary template keywords
+      2 → intent secondary template keywords
+      3 → intent tertiary template keywords
+      4+ → generic fallback keyword for this intent
     """
     primary   = intent_result["intent"]["primary"]
     secondary = intent_result["intent"].get("secondary", primary)
@@ -107,9 +168,8 @@ def get_search_keywords(intent_result, article=None, retry_loop=0):
     tmpl_secondary = SCENE_TEMPLATES.get(secondary, tmpl_primary)
 
     if retry_loop == 0:
-        # Use article-specific keywords so each story gets a unique, topic-matched image
         if article:
-            kws = _article_keywords(article.get("title", ""))
+            kws = _article_keywords(article.get("title", ""), intent=primary)
             if kws:
                 return kws
         # No article — fall straight to intent primary
@@ -124,7 +184,6 @@ def get_search_keywords(intent_result, article=None, retry_loop=0):
         return out[:4]
 
     elif retry_loop == 1:
-        # Intent primary (was loop=0) — first intent-level fallback
         if not ambiguous and primary_score >= 0.50:
             return list(tmpl_primary["primary"])
         merged = list(tmpl_primary["primary"]) + list(tmpl_secondary["primary"])

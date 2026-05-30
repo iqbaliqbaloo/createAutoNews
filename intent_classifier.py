@@ -6,6 +6,15 @@ logger = logging.getLogger(__name__)
 
 INTENTS = ["WAR", "POLITICS", "ECONOMY", "DISASTER", "SPORTS"]
 
+# Topic label shown at the very top of every Facebook and Instagram caption
+TOPIC_LABELS = {
+    "WAR":      "⚔️ WAR & CONFLICT",
+    "POLITICS": "🏛️ POLITICS",
+    "ECONOMY":  "📈 ECONOMY",
+    "DISASTER": "🚨 DISASTER ALERT",
+    "SPORTS":   "🏆 SPORTS",
+}
+
 _SYSTEM_PROMPT = """\
 You are a news classifier and social media writer. Given a news article, you must:
 1. Classify it into exactly one of: WAR, POLITICS, ECONOMY, DISASTER, SPORTS
@@ -116,8 +125,6 @@ def classify_and_generate(article, groq_client=None, trending_context=""):
     intent_tags = " | ".join(f"{k}: {v}" for k, v in _INTENT_HASHTAGS.items())
 
     import random
-    primary_guess = title  # will be refined by LLM; used only to pick a hook sample
-    hook_samples  = "\n".join(f'  "{h}"' for h in list(_VIRAL_HOOKS.values())[0][:2])
 
     user_prompt = f"""\
 Article Title: {title}
@@ -152,16 +159,23 @@ RULES — Intent:
 - primary = highest-score label; secondary = second-highest
 
 RULES — Facebook caption (MAXIMUM ORGANIC REACH — max 480 chars):
-GOAL: Make people STOP scrolling, REACT, COMMENT, and SHARE. Facebook's algorithm pushes posts to non-followers when engagement is high in the first hour.
-- Line 1 (HOOK): Write a powerful news-style opening sentence that reports the key development. Do NOT start with "BREAKING:". Write as a news broadcaster, NOT as someone addressing an audience. NEVER use phrases like "fans need to know", "you need to see this", "every [X] fan", "don't miss this", or any language that targets or addresses a specific group of people. Examples: "A major political shift is unfolding as leaders reach a historic agreement." or "A powerful earthquake has struck, leaving thousands displaced."
-- Line 2-3: 2 punchy factual sentences in present tense that reveal the key facts
-- Line 4 (CTA): End with ONE of these share calls-to-action (vary it): "Share this so your friends are informed." / "Tag someone who needs to see this." / "Share this — everyone deserves to know." / "Drop a reaction if this shocked you."
+GOAL: Make people STOP scrolling, REACT, COMMENT, and SHARE.
+- Line 1 (TOPIC LABEL): Start with the topic category in this exact format — the label depends on the intent classification:
+  WAR → "⚔️ WAR & CONFLICT |"
+  POLITICS → "🏛️ POLITICS |"
+  ECONOMY → "📈 ECONOMY |"
+  DISASTER → "🚨 DISASTER ALERT |"
+  SPORTS → "🏆 SPORTS |"
+  Then immediately after the label, write the news hook as a factual sentence. Example: "🏛️ POLITICS | A historic agreement has been reached between two major world powers."
+- Write as a news broadcaster. NEVER use phrases like "fans need to know", "you need to see this", or any language targeting a specific audience group.
+- Lines 2-3: 2 punchy factual sentences in present tense revealing the key facts
+- Line 4 (CTA): End with ONE of: "Share this so your friends are informed." / "Tag someone who needs to see this." / "Share this — everyone deserves to know." / "Drop a reaction if this shocked you."
 - Final line: 5-8 hashtags including #VisionaryMinds #BreakingNews and 3-4 topic-specific tags from: {intent_tags}
-- No URLs. Max 2 emojis, never in line 1.
+- No URLs. Max 2 emojis.
 
 RULES — Instagram caption (max 300 visible chars + hashtags):
-- Line 1: Short punchy hook ending with 🔴 emoji
-- 2 short punchy sentences on separate lines
+- Line 1: Topic label + hook — e.g. "⚔️ WAR & CONFLICT 🔴" or "🏆 SPORTS 🔴" — then one punchy factual sentence
+- 2 short punchy factual sentences on separate lines
 - Add: "Follow @VisionaryMinds for live updates 👇"
 - Do NOT include any URL or link
 - 25-30 hashtags including #VisionaryMinds #BreakingNews #WorldNews #News #CurrentAffairs #Trending #Viral #MustSee #TopStory

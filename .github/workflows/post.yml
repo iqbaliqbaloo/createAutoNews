@@ -96,7 +96,7 @@ jobs:
           TELEGRAM_CHANNEL_ID: ${{ secrets.TELEGRAM_CHANNEL_ID }}
           TZ: Asia/Karachi
 
-      # ── Notify on failure ─────────────────────────────────────────────────
+      # ── Notify on failure (Telegram + Email) ─────────────────────────────
       - name: Notify on pipeline failure
         if: failure()
         run: |
@@ -104,6 +104,36 @@ jobs:
             "https://api.telegram.org/bot${{ secrets.TELEGRAM_BOT_TOKEN }}/sendMessage" \
             -d "chat_id=${{ secrets.TELEGRAM_CHANNEL_ID }}&text=⚠️ VisionaryMinds Autoposter FAILED — $(date '+%d %b %Y %H:%M UTC')" \
             || true
+          python - <<'EOF'
+          import smtplib, os
+          from email.mime.text import MIMEText
+          u = os.environ.get("GMAIL_USER", "")
+          p = os.environ.get("GMAIL_APP_PASSWORD", "")
+          t = os.environ.get("NOTIFY_EMAIL") or u
+          if not u or not p:
+              exit(0)
+          msg = MIMEText(
+              "The VisionaryMinds Scheduled Post pipeline failed on GitHub Actions.\n\n"
+              "This means the workflow itself crashed (dependency error, timeout, etc.) "
+              "before or during posting.\n\n"
+              "Action needed: Check GitHub Actions logs at:\n"
+              "https://github.com/iqbaliqbaloo/NewAutomation/actions"
+          )
+          msg["Subject"] = "⚠️ [VisionaryMinds] Scheduled Post Pipeline FAILED"
+          msg["From"] = u
+          msg["To"] = t
+          try:
+              with smtplib.SMTP_SSL("smtp.gmail.com", 465, timeout=20) as s:
+                  s.login(u, p)
+                  s.sendmail(u, t, msg.as_string())
+              print("Failure email sent")
+          except Exception as e:
+              print(f"Email failed: {e}")
+          EOF
+        env:
+          GMAIL_USER:          ${{ secrets.GMAIL_USER }}
+          GMAIL_APP_PASSWORD:  ${{ secrets.GMAIL_APP_PASSWORD }}
+          NOTIFY_EMAIL:        ${{ secrets.NOTIFY_EMAIL }}
         continue-on-error: true
 
       # ── Persist DB ────────────────────────────────────────────────────────

@@ -257,20 +257,32 @@ def _build_caption(match, event_type, score_text, update_text):
     league = match.get("league", "SPORTS")
     tag    = LEAGUE_TAGS.get(league.upper(), ("SPORTS", (204, 41, 54)))[0]
 
-    emoji_map = {
-        "GOAL":        "⚽ GOAL!",
-        "WICKET":      "🏏 WICKET!",
-        "CENTURY":     "💯 CENTURY!",
-        "FIFTY":       "🏏 FIFTY!",
-        "RED_CARD":    "🟥 RED CARD!",
-        "HALF_TIME":   "⏸ HALF TIME",
-        "FULL_TIME":   "🏁 FULL TIME",
-        "RESULT":      "🏆 RESULT",
-        "DEATH_OVERS": "🔥 DEATH OVERS",
-        "UPDATE":      "🔄 LIVE UPDATE",
-        "BREAK":       "☕ INNINGS BREAK",
+    sport_label_map = {
+        "CRICKET":    "🏏 CRICKET",
+        "FOOTBALL":   "⚽ FOOTBALL",
+        "TENNIS":     "🎾 TENNIS",
+        "F1":         "🏎️ FORMULA 1",
+        "BOXING":     "🥊 BOXING",
+        "BASKETBALL": "🏀 BASKETBALL",
+        "SPORTS":     "🏆 SPORTS",
     }
-    headline = emoji_map.get(event_type, "🔄 LIVE UPDATE")
+    sport_label = sport_label_map.get(league.upper(), "🏆 SPORTS")
+
+    emoji_map = {
+        "GOAL":        f"{sport_label} | ⚽ GOAL!",
+        "WICKET":      f"{sport_label} | 🏏 WICKET!",
+        "CENTURY":     f"{sport_label} | 💯 CENTURY!",
+        "FIFTY":       f"{sport_label} | 🏏 FIFTY!",
+        "RED_CARD":    f"{sport_label} | 🟥 RED CARD!",
+        "HALF_TIME":   f"{sport_label} | ⏸ HALF TIME",
+        "FULL_TIME":   f"{sport_label} | 🏁 FULL TIME",
+        "RESULT":      f"{sport_label} | 🏆 RESULT",
+        "DEATH_OVERS": f"{sport_label} | 🔥 DEATH OVERS",
+        "UPDATE":      f"{sport_label} | 🔄 LIVE UPDATE",
+        "BREAK":       f"{sport_label} | ☕ INNINGS BREAK",
+        "MATCH DETECTED": f"{sport_label} | 🔔 MATCH ALERT",
+    }
+    headline = emoji_map.get(event_type, f"{sport_label} | 🔄 LIVE UPDATE")
 
     base = (
         f"{headline}\n\n"
@@ -420,6 +432,19 @@ def _post_sports_update(match, captions, headline_text, league):
     if best_image_path:
         try: os.unlink(best_image_path)
         except: pass
+
+    if not posted:
+        from publisher import send_error_email
+        team1, team2 = match["teams"][0], match["teams"][1]
+        send_error_email(
+            f"Sports Post FAILED — {team1} vs {team2}",
+            f"A sports update was triggered but failed to post on all platforms.\n\n"
+            f"🆚 Match: {team1} vs {team2}\n"
+            f"🏷️ Sport: {match.get('league', '?')}\n"
+            f"📍 Status: {match.get('state', '?')}\n"
+            f"📰 Headline: {headline_text[:150]}\n\n"
+            f"Check GitHub Actions logs for the full error.",
+        )
 
     return posted
 

@@ -9,7 +9,7 @@ from PIL import Image
 from sklearn.metrics.pairwise import cosine_similarity
 
 from generator import clip_model
-from scene_selector import get_search_keywords
+from scene_selector import get_search_keywords, BROAD_FALLBACKS
 
 logger = logging.getLogger(__name__)
 
@@ -23,9 +23,9 @@ RATE_LIMIT_FILE     = os.path.join(DATA_DIR, "rate_limit.json")
 USED_IMAGES_FILE    = os.path.join(DATA_DIR, "used_images.json")
 IMAGE_LIBRARY_DIR   = "image_library"
 
-IMAGE_CACHE_TTL_SECONDS    = 21600   # 6 hours
-PIXABAY_HOURLY_LIMIT       = 80
-USED_IMAGE_COOLDOWN_SECS   = 86400   # 24 hours — skip recently posted images
+IMAGE_CACHE_TTL_SECONDS = 21600   # 6 hours
+PIXABAY_HOURLY_LIMIT    = 80
+# Images are PERMANENTLY blacklisted once used — no TTL, no recycling.
 
 
 # ── Image cache ────────────────────────────────────────────────────────────
@@ -79,51 +79,33 @@ def _store_cached_urls(cache_key, urls):
 
 # ── Recently-used image tracking ───────────────────────────────────────────
 
-def _load_used_images():
-    try:
-        with open(USED_IMAGES_FILE) as f:
-            return json.load(f)
-    except Exception:
-        return {}
-
-
-def _save_used_images(data):
-    os.makedirs(DATA_DIR, exist_ok=True)
-    try:
-        with open(USED_IMAGES_FILE, "w") as f:
-            json.dump(data, f, indent=2)
-    except Exception as e:
-        logger.warning(f"Used-images save failed: {e}")
-
-
-def _is_recently_used(url):
-    """True if this URL was posted within the last 24 hours."""
-    data = _load_used_images()
-    ts = data.get(url)
-    if not ts:
+def _has_been_used(url):
+    """True if this URL has EVER been posted — permanent, no expiry."""
+    if not url:
         return False
     try:
-        age = (datetime.now(timezone.utc) - datetime.fromisoformat(
-            ts.replace("Z", "+00:00")
-        )).total_seconds()
-        return age < USED_IMAGE_COOLDOWN_SECS
+        with open(USED_IMAGES_FILE) as f:
+            return url in json.load(f)
     except Exception:
         return False
 
 
 def _mark_image_used(url):
-    """Record that this URL was used now; prune entries older than 24 hours."""
+    """Permanently record that this URL was used. Never removed."""
     if not url:
         return
-    data = _load_used_images()
-    now = datetime.now(timezone.utc)
-    data = {
-        u: t for u, t in data.items()
-        if (now - datetime.fromisoformat(t.replace("Z", "+00:00"))).total_seconds()
-           < USED_IMAGE_COOLDOWN_SECS
-    }
-    data[url] = now.isoformat().replace("+00:00", "Z")
-    _save_used_images(data)
+    try:
+        try:
+            with open(USED_IMAGES_FILE) as f:
+                data = json.load(f)
+        except Exception:
+            data = {}
+        data[url] = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+        os.makedirs(DATA_DIR, exist_ok=True)
+        with open(USED_IMAGES_FILE, "w") as f:
+            json.dump(data, f, indent=2)
+    except Exception as e:
+        logger.warning(f"Used-images save failed: {e}")
 
 
 # ── Rate-limit tracking ────────────────────────────────────────────────────
@@ -368,7 +350,7 @@ def search_with_clip_validation(intent_result, article=None):
         print(f"  [Image loop {loop}] keywords: {keywords}")
 
         for img_url in _search_images(keywords, cache_key):
-            if _is_recently_used(img_url):
+            if _has_been_used(img_url):
                 logger.info(f"Skipping recently used image: {img_url}")
                 continue
 
@@ -402,13 +384,14 @@ def search_with_clip_validation(intent_result, article=None):
         if loop >= MAX_RETRY_LOOPS:
             break
 
-    # ── Broad URL fallback ─────────────────────────────────────────────────
+    # ── Intent-specific broad fallback (never generic) ────────────────────
     if best_path is None:
-        print("  All specific searches failed — trying broad fallback")
-        for fallback in ["world news", "global city skyline", "news background", "city crowd"]:
-            fallback_key = f"{intent_label}_{fallback.replace(' ', '_')}"
+        print("  All specific searches failed — trying intent-specific broad fallback")
+        broad_terms = BROAD_FALLBACKS.get(intent_label, BROAD_FALLBACKS.get("POLITICS", ["news"]))
+        for fallback in broad_terms:
+            fallback_key = f"{intent_label}_broad_{fallback[:20].replace(' ', '_')}"
             for img_url in _search_images([fallback], fallback_key):
-                if _is_recently_used(img_url):
+                if _has_been_used(img_url):
                     continue
                 path = _download_tmp(img_url)
                 if not path:

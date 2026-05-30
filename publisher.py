@@ -103,6 +103,48 @@ def post_to_instagram(text, image_path=None):
     return ok
 
 
+def send_error_email(subject, body):
+    """
+    Send an error notification email via Gmail SMTP.
+    Requires secrets: GMAIL_USER, GMAIL_APP_PASSWORD, NOTIFY_EMAIL.
+    Returns True if sent, False otherwise (never raises).
+    """
+    import smtplib
+    from email.mime.text import MIMEText
+    from email.mime.multipart import MIMEMultipart
+    import pytz
+    from datetime import datetime
+
+    gmail_user = os.getenv("GMAIL_USER", "")
+    gmail_pass = os.getenv("GMAIL_APP_PASSWORD", "")
+    to_email   = os.getenv("NOTIFY_EMAIL") or gmail_user
+
+    if not gmail_user or not gmail_pass:
+        print("⚠️  Email skipped: GMAIL_USER / GMAIL_APP_PASSWORD not configured")
+        return False
+
+    try:
+        pkt      = pytz.timezone("Asia/Karachi")
+        now_pkt  = datetime.now(pkt).strftime("%d %b %Y %I:%M %p PKT")
+        full_body = f"{body}\n\n🕒 Time: {now_pkt}\n📌 VisionaryMinds Autoposter"
+
+        msg            = MIMEMultipart()
+        msg["From"]    = gmail_user
+        msg["To"]      = to_email
+        msg["Subject"] = f"[VisionaryMinds] {subject}"
+        msg.attach(MIMEText(full_body, "plain"))
+
+        with smtplib.SMTP_SSL("smtp.gmail.com", 465, timeout=20) as server:
+            server.login(gmail_user, gmail_pass)
+            server.sendmail(gmail_user, to_email, msg.as_string())
+
+        print(f"📧 Error email sent → {to_email}")
+        return True
+    except Exception as e:
+        print(f"⚠️  Error email failed: {e}")
+        return False
+
+
 def post_to_telegram(text, image_path=None):
     """Post directly to Telegram via Bot API (no Make.com intermediary)."""
     text = re.sub(r'\*\*(.*?)\*\*', r'\1', text)

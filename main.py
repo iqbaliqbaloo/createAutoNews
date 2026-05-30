@@ -318,6 +318,17 @@ def run_pipeline():
             retry_count=retry_count,
         )
 
+        if status == "failed":
+            from publisher import send_error_email
+            send_error_email(
+                "Scheduled Post FAILED — no platform posted",
+                f"The scheduled pipeline selected an article but failed to post it.\n\n"
+                f"📰 Title: {article.get('title', '')[:150]}\n"
+                f"🏷️  Intent: {primary_intent}\n"
+                f"📊 CLIP score: {best_clip:.3f}\n\n"
+                f"Check GitHub Actions logs for the full error.",
+            )
+
         # Cleanup temp image files only on success; keep on failure for artifact upload
         if posted_platforms:
             for path in platform_images.values():

@@ -112,3 +112,39 @@ jobs:
           path: data/
           key: pipeline-state-${{ github.run_id }}
         continue-on-error: true
+
+      # ── Email on workflow failure ─────────────────────────────────────────
+      - name: Email on failure
+        if: failure()
+        run: |
+          python - <<'EOF'
+          import smtplib, os
+          from email.mime.text import MIMEText
+          u = os.environ.get("GMAIL_USER", "")
+          p = os.environ.get("GMAIL_APP_PASSWORD", "")
+          t = os.environ.get("NOTIFY_EMAIL") or u
+          if not u or not p:
+              exit(0)
+          msg = MIMEText(
+              "The VisionaryMinds Breaking News Detector pipeline failed on GitHub Actions.\n\n"
+              "This may mean a breaking or trending story was detected but the pipeline "
+              "crashed before posting it.\n\n"
+              "Action needed: Check GitHub Actions logs at:\n"
+              "https://github.com/iqbaliqbaloo/NewAutomation/actions"
+          )
+          msg["Subject"] = "⚠️ [VisionaryMinds] Breaking News Detector FAILED"
+          msg["From"] = u
+          msg["To"] = t
+          try:
+              with smtplib.SMTP_SSL("smtp.gmail.com", 465, timeout=20) as s:
+                  s.login(u, p)
+                  s.sendmail(u, t, msg.as_string())
+              print("Failure email sent")
+          except Exception as e:
+              print(f"Email failed: {e}")
+          EOF
+        env:
+          GMAIL_USER:         ${{ secrets.GMAIL_USER }}
+          GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}
+          NOTIFY_EMAIL:       ${{ secrets.NOTIFY_EMAIL }}
+        continue-on-error: true

@@ -521,6 +521,17 @@ def run():
 
         logger.info(f"  → BREAKING (score={score}) — running fast pipeline")
         posted = _run_fast_pipeline(article)
+        if not posted:
+            from publisher import send_error_email
+            send_error_email(
+                "Breaking/Trending Post FAILED",
+                f"Detected a breaking/trending story but posting failed on all platforms.\n\n"
+                f"📰 Title: {article.get('title', '')[:150]}\n"
+                f"🌐 Source: {article.get('domain', '?')}\n"
+                f"📊 Score: {score} | Trending domains: "
+                f"{(story_clusters or {}).get(article.get('hash', ''), 1)}\n\n"
+                f"Check GitHub Actions logs for the full error.",
+            )
         if posted:
             try:
                 emb = _embed(article["title"])
