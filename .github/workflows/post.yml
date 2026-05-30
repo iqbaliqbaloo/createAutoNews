@@ -2,12 +2,17 @@ name: News Autoposter
 
 on:
   schedule:
+    - cron: '0  1 * * *'    # 06:00 AM PKT — early morning
+    - cron: '0  2 * * *'    # 07:00 AM PKT — morning start
     - cron: '30 3 * * *'    # 08:30 AM PKT — morning peak
     - cron: '0  6 * * *'    # 11:00 AM PKT — late morning
+    - cron: '0  7 * * *'    # 12:00 PM PKT — noon
     - cron: '0  8 * * *'    # 01:00 PM PKT — lunch peak
     - cron: '0 10 * * *'    # 03:00 PM PKT — afternoon
     - cron: '0 14 * * *'    # 07:00 PM PKT — evening peak
     - cron: '0 16 * * *'    # 09:00 PM PKT — prime time
+    - cron: '0 17 * * *'    # 10:00 PM PKT — late evening
+    - cron: '0 18 * * *'    # 11:00 PM PKT — night
   workflow_dispatch:
 
 jobs:

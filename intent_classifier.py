@@ -49,10 +49,10 @@ _VIRAL_HOOKS = {
         "A tragedy is unfolding — the world must see this:",
     ],
     "SPORTS":   [
-        "You will not believe what just happened on the field:",
-        "A moment that sports fans will never forget just occurred:",
-        "This sports story has everyone talking right now:",
-        "Game-changing news every sports fan needs to see:",
+        "A major development just emerged from the sporting world:",
+        "Here is what unfolded in today's match:",
+        "A significant result has been recorded:",
+        "The latest from today's live fixture:",
     ],
 }
 
@@ -153,7 +153,7 @@ RULES — Intent:
 
 RULES — Facebook caption (MAXIMUM ORGANIC REACH — max 480 chars):
 GOAL: Make people STOP scrolling, REACT, COMMENT, and SHARE. Facebook's algorithm pushes posts to non-followers when engagement is high in the first hour.
-- Line 1 (HOOK): Write a powerful, curiosity-driven or emotionally charged opening sentence that grabs attention instantly. Do NOT start with "BREAKING:". Examples: "This is happening RIGHT NOW and the world needs to know:" or "A decision that will affect millions of people was just made:"
+- Line 1 (HOOK): Write a powerful news-style opening sentence that reports the key development. Do NOT start with "BREAKING:". Write as a news broadcaster, NOT as someone addressing an audience. NEVER use phrases like "fans need to know", "you need to see this", "every [X] fan", "don't miss this", or any language that targets or addresses a specific group of people. Examples: "A major political shift is unfolding as leaders reach a historic agreement." or "A powerful earthquake has struck, leaving thousands displaced."
 - Line 2-3: 2 punchy factual sentences in present tense that reveal the key facts
 - Line 4 (CTA): End with ONE of these share calls-to-action (vary it): "Share this so your friends are informed." / "Tag someone who needs to see this." / "Share this — everyone deserves to know." / "Drop a reaction if this shocked you."
 - Final line: 5-8 hashtags including #VisionaryMinds #BreakingNews and 3-4 topic-specific tags from: {intent_tags}

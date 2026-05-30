@@ -4,12 +4,13 @@ Pipeline B — Breaking News Detector
 Runs every 2 hours (breaking_detector.yml).
 Phase 1 (lightweight, always): keyword pre-check only — no ML.
 Phase 2 (full ML, conditional): runs only when Phase 1 finds a breaking signal.
-Scans the last 15 minutes of RSS, scores articles, and fast-posts
+Scans the last 120 minutes of RSS, scores articles, and fast-posts
 anything that hits the breaking threshold while staying safely
 within daily/hourly caps.
 """
 
 import os
+import re
 import json
 import hashlib
 import logging
@@ -34,10 +35,18 @@ NIGHT_SCORE    = 80   # stricter threshold 01:00–08:00 PKT
 BREAKING_KEYWORDS = [
     "breaking", "just in", "urgent", "explosion", "attack", "killed",
     "earthquake", "flood", "crash", "resignation", "arrested",
-    "missile", "blast",
+    "missile", "blast", "wicket", "century", "hat-trick", "match result",
 ]
 PAKISTAN_KEYWORDS = [
     "islamabad", "karachi", "lahore", "pti", "army", "pm pakistan",
+    "pakistan vs", "pak vs", "pcb", "pakistan cricket",
+]
+
+# Sports importance keywords — any major global sports event gets +20
+SPORTS_IMPORTANCE_KEYWORDS = [
+    "world cup final", "champions league", "icc final", "ipl final",
+    "psl final", "ashes", "world cup semi", "asia cup final",
+    "grand slam", "olympic", "world championship",
 ]
 
 RSS_SOURCES = [
@@ -47,6 +56,8 @@ RSS_SOURCES = [
     "https://feeds.reuters.com/reuters/topNews",
     "https://feeds.bbci.co.uk/news/world/rss.xml",
     "https://www.aljazeera.com/xml/rss/all.xml",
+    "https://www.espncricinfo.com/rss/content/story/feeds/0.xml",
+    "https://news.google.com/rss/search?q=pakistan+cricket&hl=en&gl=PK&ceid=PK:en",
 ]
 
 HEADERS = {"User-Agent": "Mozilla/5.0 (BreakingBot/1.0)"}
@@ -133,38 +144,98 @@ def _fetch_recent(max_age_minutes=15):
     return results
 
 
+# ── Story-cluster trending: group articles by shared keywords ─────────────
+
+_STOPWORDS = {
+    "this", "that", "with", "from", "have", "been", "will", "were", "they",
+    "their", "says", "said", "also", "more", "after", "over", "just", "time",
+    "news", "world", "year", "first", "last", "most", "into", "when", "what",
+    "would", "could", "about", "which", "there", "where", "than", "some",
+    "report", "update", "today", "breaking", "latest",
+}
+
+
+def _story_key(title):
+    """Extract up to 4 meaningful words as a story signature."""
+    words = re.findall(r'\b[a-z]{4,}\b', title.lower())
+    key   = [w for w in words if w not in _STOPWORDS][:4]
+    return " ".join(sorted(key)) if len(key) >= 2 else ""
+
+
+def _build_story_clusters(articles):
+    """
+    Return dict: article_hash → number of unique domains covering the same story.
+    'Same story' = 2+ shared meaningful keywords in the title.
+    This is true trending detection — not per-domain article count.
+    """
+    from collections import defaultdict
+
+    sig_domains = defaultdict(set)
+    sig_hashes  = defaultdict(list)
+
+    for article in articles:
+        sig = _story_key(article.get("title", ""))
+        if sig:
+            sig_domains[sig].add(article.get("domain", ""))
+            sig_hashes[sig].append(article.get("hash", ""))
+
+    clusters = {}
+    for sig, hashes in sig_hashes.items():
+        domain_count = len(sig_domains[sig])
+        for h in hashes:
+            clusters[h] = domain_count
+
+    return clusters
+
+
 # ── Breaking score ────────────────────────────────────────────────────────
 
-def _breaking_score(article, source_counts=None):
+def _breaking_score(article, story_clusters=None, source_counts=None):
     score = 0
     text  = (article.get("title", "") + " " + article.get("summary", "")).lower()
 
-    # Source velocity: 3+ sources reporting same story in 15 min → +30
-    if source_counts and source_counts.get(article.get("domain", ""), 0) >= 3:
-        score += 30
+    # True trending: how many unique domains cover this same story
+    # 5+ domains = massive trend (+50); 3+ = trending (+35); 2 = gaining traction (+20)
+    cluster_size = (story_clusters or {}).get(article.get("hash", ""), 1)
+    if cluster_size >= 5:
+        score += 50
+    elif cluster_size >= 3:
+        score += 35
+    elif cluster_size >= 2:
+        score += 20
 
-    # Keyword match: +25
+    # Breaking keyword match: +25
     for kw in BREAKING_KEYWORDS:
         if kw in text:
             score += 25
             break
 
-    # Pakistan keyword: +20
+    # Pakistan keyword: +15
     for kw in PAKISTAN_KEYWORDS:
+        if kw in text:
+            score += 15
+            break
+
+    # Major global sports event: +20
+    for kw in SPORTS_IMPORTANCE_KEYWORDS:
         if kw in text:
             score += 20
             break
 
-    # Recency bonus
+    # Recency bonus — tiered across the full 120-min window
     pub = article.get("published_at")
     if pub:
         try:
             dt      = datetime.fromisoformat(pub.replace("Z", "+00:00"))
             age_min = (datetime.now(timezone.utc) - dt).total_seconds() / 60
-            if age_min < 5:
+            if age_min < 15:
                 score += 20
-            elif age_min < 15:
+            elif age_min < 30:
+                score += 15
+            elif age_min < 60:
                 score += 10
+            elif age_min < 120:
+                score += 5
         except Exception:
             pass
 
@@ -336,6 +407,52 @@ def _run_fast_pipeline(article, caption_prefix=""):
     return posted
 
 
+# ── Admin notification ────────────────────────────────────────────────────
+
+def _notify_admin(article, platforms, score, story_clusters, kind="BREAKING"):
+    """
+    Send a private Telegram alert so the admin can see exactly what was
+    detected, why it triggered, and where it was posted.
+    """
+    token   = os.getenv("TELEGRAM_BOT_TOKEN")
+    channel = os.getenv("TELEGRAM_CHANNEL_ID")
+    if not token or not channel:
+        return
+
+    cluster_size = (story_clusters or {}).get(article.get("hash", ""), 1)
+    plat_str     = " + ".join(p.upper() for p in platforms) if platforms else "NONE"
+    now_pkt      = datetime.now(PKT).strftime("%I:%M %p PKT")
+    title        = article.get("title", "")[:120]
+    domain       = article.get("domain", "?")
+
+    if cluster_size >= 5:
+        trend_reason = f"Trending hard — {cluster_size} different sources covering it"
+    elif cluster_size >= 3:
+        trend_reason = f"Trending — {cluster_size} sources covering it"
+    elif cluster_size >= 2:
+        trend_reason = f"Gaining traction — {cluster_size} sources"
+    else:
+        trend_reason = "Breaking keyword / sports signal detected"
+
+    msg = (
+        f"🚨 {kind} POST ALERT\n\n"
+        f"📰 {title}\n"
+        f"🌐 Source: {domain}\n\n"
+        f"📊 Score: {score}\n"
+        f"📡 Why: {trend_reason}\n"
+        f"📱 Posted to: {plat_str}\n"
+        f"🕒 {now_pkt}"
+    )
+    try:
+        requests.post(
+            f"https://api.telegram.org/bot{token}/sendMessage",
+            data={"chat_id": channel, "text": msg},
+            timeout=10,
+        )
+    except Exception:
+        pass
+
+
 # ── Main ──────────────────────────────────────────────────────────────────
 
 def run():
@@ -344,20 +461,19 @@ def run():
 
     threshold = NIGHT_SCORE if _is_night() else SCORE_POST
 
-    articles = _fetch_recent(max_age_minutes=15)
-    logger.info(f"Fetched {len(articles)} recent articles (< 15 min)")
+    articles = _fetch_recent(max_age_minutes=120)
+    logger.info(f"Fetched {len(articles)} recent articles (< 120 min)")
 
     if not articles:
         logger.info("No recent articles — exiting")
         return
 
-    # Count articles per domain for velocity scoring
-    from collections import Counter
-    source_counts = Counter(a.get("domain", "") for a in articles)
+    # True trending: count unique domains per story cluster
+    story_clusters = _build_story_clusters(articles)
 
     processed = 0
     for article in articles:
-        score = _breaking_score(article, source_counts)
+        score = _breaking_score(article, story_clusters=story_clusters)
         logger.info(f"Score={score} | {article['title'][:80]}")
 
         if score < SCORE_QUEUE:
@@ -388,6 +504,7 @@ def run():
                 matched_story["update_count"]   = matched_story.get("update_count", 0) + 1
                 matched_story["last_update_at"] = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
                 _record_hour_post(state)
+                _notify_admin(article, posted, score, story_clusters, kind="UPDATE")
                 processed += 1
             continue
 
@@ -419,6 +536,7 @@ def run():
             for p in posted:
                 state["last_post_time"][p] = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
             _record_hour_post(state)
+            _notify_admin(article, posted, score, story_clusters, kind="BREAKING/TRENDING")
             processed += 1
             break   # one breaking story per 5-min run
 
@@ -453,13 +571,12 @@ def check_only():
     """
     state     = _load_state()
     threshold = NIGHT_SCORE if _is_night() else SCORE_POST
-    articles  = _fetch_recent(max_age_minutes=15)
+    articles  = _fetch_recent(max_age_minutes=120)
 
-    from collections import Counter
-    source_counts = Counter(a.get("domain", "") for a in articles)
+    story_clusters = _build_story_clusters(articles)
 
     for article in articles:
-        score = _breaking_score(article, source_counts)
+        score = _breaking_score(article, story_clusters=story_clusters)
         if score >= threshold:
             logger.info(f"Breaking signal: score={score} | {article['title'][:70]}")
             print("true")

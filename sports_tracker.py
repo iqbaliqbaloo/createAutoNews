@@ -11,6 +11,7 @@ Match states: PRE_MATCH, LIVE, RESULT, POST_MATCH
 """
 
 import os
+import re
 import json
 import logging
 from datetime import datetime, timezone, timedelta
@@ -30,11 +31,70 @@ FOOTBALL_API = "https://api.football-data.org/v4"
 
 COOLDOWN_MINUTES = 20
 
+# ── Generic "X vs Y" detector — works for ANY sport ──────────────────────
+# Matches patterns like: "Pakistan vs Australia", "Real Madrid v Barcelona",
+# "Djokovic versus Alcaraz", capturing each side (3-30 chars)
+VS_PATTERN = re.compile(
+    r'([A-Za-z][A-Za-z .]{2,28}?)\s+(?:vs?\.?|versus)\s+([A-Za-z][A-Za-z .]{2,28})',
+    re.IGNORECASE,
+)
+
+# Sport-type classifier: first keyword match wins
+SPORT_CONTEXTS = {
+    "cricket":    ["cricket", "odi", "t20", "test match", "wicket", "innings",
+                   "icc", "psl", "ipl", "ashes", "over"],
+    "football":   ["football", "soccer", "goal", "penalty", "premier league",
+                   "champions league", "la liga", "fifa", "bundesliga", "serie a",
+                   "ucl", "europa", "epl", "fa cup"],
+    "tennis":     ["tennis", "wimbledon", "us open", "french open",
+                   "australian open", "grand slam", "atp", "wta", "set", "serve"],
+    "f1":         ["formula 1", "formula one", "f1", "grand prix", "race",
+                   "lap", "pit stop", "pole position", "fastest lap"],
+    "boxing":     ["boxing", "knockout", "k.o.", "ufc", "mma", "bout", "round"],
+    "basketball": ["basketball", "nba", "dunk", "rebound", "quarter"],
+}
+
+# Any of these in the title → match is definitely worth posting
+IMPORTANCE_SIGNALS = [
+    "final", "semi-final", "semifinal", "world cup", "champions",
+    "ashes", "icc", "psl", "ipl", "live", "t20i", "odi",
+    "test match", "asia cup", "grand slam", "grand prix",
+    "won", "wins", "victory", "result", "preview", "series",
+]
+
+# RSS feeds covering ALL major sports — cricket, football, tennis, F1, etc.
+DISCOVERY_RSS = [
+    # Cricket
+    "https://www.espncricinfo.com/rss/content/story/feeds/0.xml",
+    "https://news.google.com/rss/search?q=cricket+live+match&hl=en&gl=PK&ceid=PK:en",
+    # Football
+    "https://news.google.com/rss/search?q=football+live+match+today&hl=en&gl=PK&ceid=PK:en",
+    "https://news.google.com/rss/search?q=champions+league+match&hl=en&gl=PK&ceid=PK:en",
+    # All sports trending
+    "https://news.google.com/rss/search?q=sports+final+live+today&hl=en&gl=PK&ceid=PK:en",
+    "https://news.google.com/rss/search?q=sports+world+cup+semifinal+final&hl=en&gl=PK&ceid=PK:en",
+    # Pakistan outlets (cover all local + international sports)
+    "https://www.geo.tv/rss/1/0",
+    "https://arynews.tv/feed/",
+]
+
+# Cricket teams kept for live-match polling (cricket-specific RSS search)
+CRICKET_TEAMS = [
+    "pakistan", "india", "australia", "england", "new zealand",
+    "south africa", "west indies", "bangladesh", "sri lanka",
+    "zimbabwe", "afghanistan", "ireland", "netherlands", "scotland",
+]
+
 MAX_POSTS = {
     "cricket_t20":  8,
     "cricket_odi":  6,
     "cricket_test": 4,
     "football":     6,
+    "tennis":       4,
+    "f1":           4,
+    "boxing":       4,
+    "basketball":   4,
+    "sports":       3,   # generic fallback
 }
 
 # League → tag label + colour (RGB)
@@ -47,7 +107,7 @@ LEAGUE_TAGS = {
     "FOOTBALL":("FOOTBALL", (  5, 122,  85)),
 }
 
-# Cricket RSS feeds (score updates appear as news items)
+# Cricket RSS feeds used during live-match polling (separate from discovery)
 CRICKET_RSS = [
     "https://www.espncricinfo.com/rss/content/story/feeds/0.xml",
     "https://news.google.com/rss/search?q=cricket+live+score+match&hl=en&gl=PK&ceid=PK:en",
@@ -263,6 +323,52 @@ def _same_day(ts_str):
         return False
 
 
+# ── Admin notification ────────────────────────────────────────────────────
+
+def _notify_sports_admin(match, posted, event_type):
+    """
+    Send a Telegram alert when a sports update is posted, so the admin
+    knows what match was detected, why it fired, and where it was posted.
+    """
+    token   = os.getenv("TELEGRAM_BOT_TOKEN")
+    channel = os.getenv("TELEGRAM_CHANNEL_ID")
+    if not token or not channel:
+        return
+
+    team1, team2 = match["teams"][0], match["teams"][1]
+    sport        = match.get("league", "SPORTS")
+    state        = match.get("state", "?")
+    plat_str     = " + ".join(p.upper() for p in posted) if posted else "NONE"
+    now_pkt      = datetime.now(PKT).strftime("%I:%M %p PKT")
+
+    sport_emoji = {
+        "CRICKET":    "🏏",
+        "FOOTBALL":   "⚽",
+        "TENNIS":     "🎾",
+        "F1":         "🏎️",
+        "BOXING":     "🥊",
+        "BASKETBALL": "🏀",
+    }.get(sport.upper(), "🏆")
+
+    msg = (
+        f"{sport_emoji} SPORTS POST ALERT\n\n"
+        f"🆚 {team1} vs {team2}\n"
+        f"🏷️ Sport: {sport}\n"
+        f"📍 Match status: {state}\n"
+        f"⚡ Event: {event_type}\n"
+        f"📱 Posted to: {plat_str}\n"
+        f"🕒 {now_pkt}"
+    )
+    try:
+        requests.post(
+            f"https://api.telegram.org/bot{token}/sendMessage",
+            data={"chat_id": channel, "text": msg},
+            timeout=10,
+        )
+    except Exception:
+        pass
+
+
 # ── Post helper ───────────────────────────────────────────────────────────
 
 def _post_sports_update(match, captions, headline_text, league):
@@ -355,6 +461,7 @@ def _process_cricket(match):
         match["last_post_time"] = now_ts
         match["post_count"]     = match.get("post_count", 0) + 1
         match.setdefault("post_history", []).append(now_ts)
+        _notify_sports_admin(match, posted, event_type)
 
     return match
 
@@ -410,18 +517,181 @@ def _process_football(match):
         match["last_post_time"] = now_ts
         match["post_count"]     = match.get("post_count", 0) + 1
         match.setdefault("post_history", []).append(now_ts)
+        _notify_sports_admin(match, posted, event_type)
 
     return match
+
+
+# ── Generic sport handler (tennis, F1, boxing, basketball, etc.) ──────────
+
+def _process_generic_sport(match):
+    """
+    For sports we cannot track with a live API (tennis, F1, boxing, etc.),
+    post one announcement when the match is first discovered, then mark done.
+    """
+    if _at_post_limit(match):
+        logger.info(f"  Post limit reached for {match['id']}")
+        return match
+    if not _can_post(match):
+        logger.info(f"  Cooldown active for {match['id']}")
+        return match
+
+    team1, team2  = match["teams"][0], match["teams"][1]
+    sport         = match.get("league", "SPORTS")
+    match_state   = match.get("state", "PRE_MATCH")
+    event_type    = "UPDATE"
+    score_text    = f"{team1} vs {team2}"
+    update_text   = f"{'Live' if match_state == 'LIVE' else 'Upcoming'} {sport} match"
+
+    captions = _build_caption(match, event_type, score_text, update_text)
+    headline = f"{team1} vs {team2} | {sport}"
+
+    logger.info(f"  Posting {sport} update for {match['id']}")
+    posted = _post_sports_update(match, captions, headline, sport)
+
+    if posted:
+        now_ts = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+        match["last_post_time"] = now_ts
+        match["post_count"]     = match.get("post_count", 0) + 1
+        match.setdefault("post_history", []).append(now_ts)
+        match["state"] = "RESULT"   # no live API → one post per discovery
+        _notify_sports_admin(match, posted, "MATCH DETECTED")
+
+    return match
+
+
+# ── Auto-discovery: ANY sport, ANY teams, trend or importance based ───────
+
+def _detect_sport(title):
+    """Return sport type string based on keywords in title."""
+    for sport, keywords in SPORT_CONTEXTS.items():
+        if any(kw in title for kw in keywords):
+            return sport
+    return "sports"
+
+
+def _discover_matches(state):
+    """
+    Scan multi-sport RSS feeds for ANY upcoming or live match — cricket,
+    football, tennis, F1, boxing, basketball, or any sport.
+
+    Detection uses a generic "X vs Y" / "X v Y" pattern, so no hardcoded
+    team lists are needed. A match is included when:
+      - "vs" / "v." / "versus" connects two names in the title, AND
+      - (a) the title contains an importance/live signal, OR
+        (b) the same matchup appears in 2+ articles (trending velocity)
+
+    Adds discovered matches to state["active_matches"].
+    Only considers articles published within the last 6 hours.
+    """
+    from collections import Counter
+
+    existing_ids = {m["id"] for m in state.get("active_matches", [])}
+    now_utc      = datetime.now(timezone.utc)
+
+    # ── Collect fresh titles from all sports feeds ────────────────────────
+    all_titles = []
+    for rss_url in DISCOVERY_RSS:
+        try:
+            r    = requests.get(rss_url, timeout=10,
+                                headers={"User-Agent": "Mozilla/5.0 (SportsBot/1.0)"})
+            feed = feedparser.parse(r.text)
+        except Exception as e:
+            logger.warning(f"Discovery RSS failed {rss_url}: {e}")
+            continue
+
+        for entry in feed.entries:
+            if not hasattr(entry, "published_parsed") or not entry.published_parsed:
+                continue
+            try:
+                pub_dt = datetime(*entry.published_parsed[:6], tzinfo=timezone.utc)
+                if (now_utc - pub_dt).total_seconds() / 3600 > 6:
+                    continue
+            except Exception:
+                continue
+            title = (getattr(entry, "title", "") or "").lower()
+            if title:
+                all_titles.append(title)
+
+    # ── Count how many articles mention the same matchup (velocity) ───────
+    matchup_count = Counter()
+    for title in all_titles:
+        m = VS_PATTERN.search(title)
+        if m:
+            pair = tuple(sorted([m.group(1).strip()[:20].lower(),
+                                  m.group(2).strip()[:20].lower()]))
+            matchup_count[pair] += 1
+
+    # ── Find matchups to post about ───────────────────────────────────────
+    seen_pairs = set()
+
+    for title in all_titles:
+        m = VS_PATTERN.search(title)
+        if not m:
+            continue
+
+        raw1 = m.group(1).strip()
+        raw2 = m.group(2).strip()
+        pair = tuple(sorted([raw1[:20].lower(), raw2[:20].lower()]))
+
+        if pair in seen_pairs:
+            continue
+        seen_pairs.add(pair)
+
+        has_importance = any(sig in title for sig in IMPORTANCE_SIGNALS)
+        is_live        = any(w in title for w in ["live", "score", "wicket", "goal", "race", "set", "round"])
+        is_trending    = matchup_count[pair] >= 2
+
+        if not (has_importance or is_live or is_trending):
+            continue
+
+        sport = _detect_sport(title)
+
+        # Cricket sub-type
+        if sport == "cricket":
+            if "t20" in title:
+                match_type = "cricket_t20"
+            elif "test" in title:
+                match_type = "cricket_test"
+            else:
+                match_type = "cricket_odi"
+        else:
+            match_type = sport
+
+        safe_pair = f"{pair[0]}_{pair[1]}".replace(" ", "_").replace(".", "")
+        match_id  = f"{safe_pair}_{match_type}"
+        if match_id in existing_ids:
+            continue
+
+        new_match = {
+            "id":           match_id,
+            "teams":        [raw1.title(), raw2.title()],
+            "type":         match_type,
+            "league":       sport.upper(),
+            "state":        "LIVE" if is_live else "PRE_MATCH",
+            "start_time":   now_utc.isoformat().replace("+00:00", "Z"),
+            "post_count":   0,
+            "post_history": [],
+        }
+        state.setdefault("active_matches", []).append(new_match)
+        existing_ids.add(match_id)
+        logger.info(f"Auto-discovered [{sport}]: {match_id} (state={new_match['state']})")
+
+    return state
 
 
 # ── Main ──────────────────────────────────────────────────────────────────
 
 def run():
-    state   = _load_state()
-    matches = state.get("active_matches", [])
+    state = _load_state()
 
+    # Auto-discover any important/trending cricket match before checking state
+    state = _discover_matches(state)
+    _save_state(state)
+
+    matches = state.get("active_matches", [])
     if not matches:
-        logger.info("No active matches — exiting")
+        logger.info("No active matches found — exiting")
         return
 
     now = datetime.now(timezone.utc)
@@ -467,6 +737,9 @@ def run():
             match = _process_cricket(match)
         elif match_type == "football":
             match = _process_football(match)
+        else:
+            # tennis, f1, boxing, basketball, generic sports
+            match = _process_generic_sport(match)
 
         updated.append(match)
 

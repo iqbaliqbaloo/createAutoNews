@@ -6,24 +6,6 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-# ── Make.com webhook pool (primary → MAKE_WEBHOOK_URL_1 fallback) ──────────
-_WEBHOOK_POOL = None
-
-
-def _get_webhook_pool():
-    """Build ordered list of active Make.com webhook URLs (lazy, once per process)."""
-    global _WEBHOOK_POOL
-    if _WEBHOOK_POOL is None:
-        _WEBHOOK_POOL = [
-            u for u in (
-                os.getenv("MAKE_WEBHOOK_URL"),
-                os.getenv("MAKE_WEBHOOK_URL_1"),
-            )
-            if u
-        ]
-    return _WEBHOOK_POOL
-
-
 # ── ImgBB image host (provides a public URL for Make.com to fetch) ─────────
 
 def upload_to_imgbb(image_path, retries=3):
@@ -42,7 +24,7 @@ def upload_to_imgbb(image_path, retries=3):
             with open(image_path, "rb") as f:
                 r = requests.post(
                     "https://api.imgbb.com/1/upload",
-                    data={"key": api_key},                           # no expiration → permanent
+                    data={"key": api_key},
                     files={"image": ("image.jpg", f, "image/jpeg")},
                     timeout=30,
                 )
@@ -59,32 +41,28 @@ def upload_to_imgbb(image_path, retries=3):
     return None
 
 
-# ── Webhook dispatcher ─────────────────────────────────────────────────────
+# ── Per-platform webhook sender ────────────────────────────────────────────
 
-def _send_webhook(payload, per_webhook_retries=2):
-    """
-    POST payload to each Make.com webhook in order (primary → fallback).
-    Returns True on first 200 response; False if all URLs fail.
-    Make.com reads the 'platform' field to route to Facebook or Instagram.
-    """
-    pool = _get_webhook_pool()
-    if not pool:
-        print("❌ No Make.com webhook URL configured (MAKE_WEBHOOK_URL / MAKE_WEBHOOK_URL_1)")
+def _send_to_url(url, payload, label, retries=2):
+    """POST payload to a single Make.com webhook URL. Returns True on 200."""
+    if not url:
+        print(f"❌ {label} webhook URL not configured")
         return False
 
-    for idx, url in enumerate(pool):
-        label = "primary" if idx == 0 else f"fallback-{idx}"
-        for attempt in range(per_webhook_retries):
-            try:
-                print(f"  → {label} webhook attempt {attempt + 1}")
-                r = requests.post(url, json=payload, timeout=30)
-                if r.status_code == 200:
-                    return True
-                print(f"  {label} rejected: {r.status_code} {r.text[:120]}")
-            except Exception as e:
-                print(f"  {label} error: {e}")
-            if attempt < per_webhook_retries - 1:
-                time.sleep(3)
+    for attempt in range(retries):
+        try:
+            print(f"  → {label} webhook attempt {attempt + 1}")
+            r = requests.post(url, json=payload, timeout=30)
+            if r.status_code == 200:
+                return True
+            # Make.com acknowledged — a non-200 means it rejected the request.
+            # Do NOT retry with the same URL; it would double-post.
+            print(f"  {label} rejected: {r.status_code} {r.text[:120]}")
+            return False
+        except Exception as e:
+            print(f"  {label} error: {e}")
+        if attempt < retries - 1:
+            time.sleep(3)
 
     return False
 
@@ -92,7 +70,7 @@ def _send_webhook(payload, per_webhook_retries=2):
 # ── Platform post functions ────────────────────────────────────────────────
 
 def post_to_facebook(text, image_path=None):
-    """Send Facebook post data to Make.com; Make.com publishes to the Page."""
+    """Send Facebook post to Make.com via MAKE_WEBHOOK_URL (never MAKE_WEBHOOK_URL_1)."""
     img_url = upload_to_imgbb(image_path) if image_path else None
     payload = {
         "platform":  "facebook",
@@ -100,13 +78,14 @@ def post_to_facebook(text, image_path=None):
         "image_url": img_url or "",
     }
     print(f"  Posting Facebook via Make.com (image={'yes' if img_url else 'no'})...")
-    ok = _send_webhook(payload)
+    url = os.getenv("MAKE_WEBHOOK_URL")
+    ok  = _send_to_url(url, payload, "Facebook(MAKE_WEBHOOK_URL)")
     print("✅ FB posted via Make.com" if ok else "❌ FB post failed")
     return ok
 
 
 def post_to_instagram(text, image_path=None):
-    """Send Instagram post data to Make.com; Make.com publishes to the account."""
+    """Send Instagram post to Make.com via MAKE_WEBHOOK_URL_1 (never MAKE_WEBHOOK_URL)."""
     img_url = upload_to_imgbb(image_path) if image_path else None
     if not img_url:
         reason = "no image provided" if not image_path else "upload failed"
@@ -118,15 +97,14 @@ def post_to_instagram(text, image_path=None):
         "image_url": img_url,
     }
     print("  Posting Instagram via Make.com...")
-    ok = _send_webhook(payload)
+    url = os.getenv("MAKE_WEBHOOK_URL_1")
+    ok  = _send_to_url(url, payload, "Instagram(MAKE_WEBHOOK_URL_1)")
     print("✅ Instagram posted via Make.com" if ok else "❌ Instagram post failed")
     return ok
 
 
-
 def post_to_telegram(text, image_path=None):
     """Post directly to Telegram via Bot API (no Make.com intermediary)."""
-    # Strip **markdown** markers — Telegram plain-text mode, no parse_mode
     text = re.sub(r'\*\*(.*?)\*\*', r'\1', text)
 
     token   = os.getenv("TELEGRAM_BOT_TOKEN")

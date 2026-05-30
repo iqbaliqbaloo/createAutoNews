@@ -40,35 +40,64 @@ jobs:
       - name: Create data directory
         run: mkdir -p data
 
-      # ── Phase 1: check if any match is LIVE (pure Python, zero packages) ─
-      - name: Check for active match
+      # ── Phase 1: check active matches OR discover ANY sport via "vs" pattern ─
+      - name: Install light dependencies
+        run: pip install feedparser requests
+
+      - name: Check for active match or discoverable match
         id: matchcheck
         run: |
-          python - <<'EOF'
-          import json, os, sys
-          path = "data/sports_state.json"
-          if not os.path.exists(path):
-              print("has_match=false")
-          else:
-              try:
-                  d = json.load(open(path))
-                  has = bool(d.get("active_matches"))
-              except Exception:
-                  has = False
-              print(f"has_match={'true' if has else 'false'}")
-          EOF
           python - <<'EOF' >> "$GITHUB_OUTPUT"
-          import json, os
+          import json, os, re, requests, feedparser
+
+          # Generic "X vs Y" pattern — works for cricket, football, tennis, F1, etc.
+          VS_PATTERN = re.compile(
+              r'([A-Za-z][A-Za-z .]{2,28}?)\s+(?:vs?\.?|versus)\s+([A-Za-z][A-Za-z .]{2,28})',
+              re.IGNORECASE,
+          )
+          IMPORTANCE_SIGNALS = [
+              "final", "semifinal", "semi-final", "world cup", "champions",
+              "ashes", "icc", "psl", "ipl", "live", "t20i", "odi", "grand prix",
+              "test match", "asia cup", "grand slam", "won", "wins", "series",
+          ]
+          LIVE_SIGNALS = ["live", "score", "wicket", "goal", "race", "set", "round"]
+
+          # 1. Check existing state file
           path = "data/sports_state.json"
-          if not os.path.exists(path):
-              print("has_match=false")
-          else:
+          has = False
+          if os.path.exists(path):
               try:
                   d = json.load(open(path))
                   has = bool(d.get("active_matches"))
               except Exception:
-                  has = False
-              print(f"has_match={'true' if has else 'false'}")
+                  pass
+
+          # 2. If no existing matches, scan multi-sport RSS feeds
+          if not has:
+              FEEDS = [
+                  "https://www.espncricinfo.com/rss/content/story/feeds/0.xml",
+                  "https://news.google.com/rss/search?q=sports+live+match+today&hl=en&gl=PK&ceid=PK:en",
+                  "https://news.google.com/rss/search?q=cricket+football+live&hl=en&gl=PK&ceid=PK:en",
+                  "https://news.google.com/rss/search?q=sports+final+world+cup&hl=en&gl=PK&ceid=PK:en",
+                  "https://www.geo.tv/rss/1/0",
+              ]
+              for url in FEEDS:
+                  try:
+                      r    = requests.get(url, timeout=8, headers={"User-Agent": "Mozilla/5.0"})
+                      feed = feedparser.parse(r.text)
+                      for entry in feed.entries:
+                          title = (getattr(entry, "title", "") or "").lower()
+                          if VS_PATTERN.search(title):
+                              if (any(s in title for s in IMPORTANCE_SIGNALS) or
+                                      any(w in title for w in LIVE_SIGNALS)):
+                                  has = True
+                                  break
+                  except Exception:
+                      pass
+                  if has:
+                      break
+
+          print(f"has_match={'true' if has else 'false'}")
           EOF
 
       # ── Phase 2: full pipeline — only runs when a match is active ─────────
