@@ -36,14 +36,20 @@ def init_db():
 
 # ─── CHECK URL DUPLICATE ──────────────────────────
 
-def already_posted(conn, url_hash):
+def already_posted(conn, url_hash, platform=None):
     if not url_hash:
         return False
 
-    row = conn.execute(
-        "SELECT 1 FROM posted WHERE url_hash=?",
-        (url_hash,)
-    ).fetchone()
+    if platform:
+        row = conn.execute(
+            "SELECT 1 FROM posted WHERE url_hash=? AND platform=?",
+            (url_hash, platform),
+        ).fetchone()
+    else:
+        row = conn.execute(
+            "SELECT 1 FROM posted WHERE url_hash=?",
+            (url_hash,),
+        ).fetchone()
 
     return row is not None
 

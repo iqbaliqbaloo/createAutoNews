@@ -28,9 +28,8 @@ PKT            = pytz.timezone("Asia/Karachi")
 DATA_DIR       = "data"
 STATE_FILE     = os.path.join(DATA_DIR, "breaking_state.json")
 
-SCORE_POST     = 60   # immediate post
-SCORE_QUEUE    = 40   # add to queue
-NIGHT_SCORE    = 80   # stricter threshold 01:00–08:00 PKT
+SCORE_POST  = 60   # immediate post
+SCORE_QUEUE = 40   # add to queue
 
 BREAKING_KEYWORDS = [
     "breaking", "just in", "urgent", "explosion", "attack", "killed",
@@ -50,14 +49,39 @@ SPORTS_IMPORTANCE_KEYWORDS = [
 ]
 
 RSS_SOURCES = [
+    # ── Pakistan ──────────────────────────────────────────────────────────
     "https://www.geo.tv/rss/1/0",
     "https://arynews.tv/feed/",
+    "https://www.dawn.com/feeds/home",
+    "https://tribune.com.pk/feed",
+    "https://www.thenews.com.pk/rss/1/1",
+    "https://www.samaa.tv/feed/",
+    "https://dunyanews.tv/index.php/en?format=feed&type=rss",
+    # ── International wire / broadcast ────────────────────────────────────
     "https://feeds.reuters.com/reuters/worldNews",
     "https://feeds.reuters.com/reuters/topNews",
     "https://feeds.bbci.co.uk/news/world/rss.xml",
     "https://www.aljazeera.com/xml/rss/all.xml",
+    "https://rss.cnn.com/rss/cnn_topstories.rss",
+    "https://feeds.foxnews.com/foxnews/world",
+    "https://feeds.skynews.com/feeds/rss/world.xml",
+    "https://rss.dw.com/rdf/rss-en-world",
+    "https://www.france24.com/en/rss",
+    "https://www.theguardian.com/world/rss",
+    "https://news.yahoo.com/rss/",
+    # ── South Asia ────────────────────────────────────────────────────────
+    "https://timesofindia.indiatimes.com/rssfeedstopstories.cms",
+    "https://feeds.feedburner.com/ndtvnews-top-stories",
+    # ── Sports ────────────────────────────────────────────────────────────
     "https://www.espncricinfo.com/rss/content/story/feeds/0.xml",
+    "https://feeds.bbci.co.uk/sport/rss.xml",
+    "https://www.skysports.com/rss/12040",
+    # ── Google News (topic queries) ───────────────────────────────────────
+    "https://news.google.com/rss?hl=en-US&gl=US&ceid=US:en",
+    "https://news.google.com/rss/search?q=breaking+news&hl=en&gl=US&ceid=US:en",
+    "https://news.google.com/rss/search?q=pakistan+breaking+news&hl=en&gl=PK&ceid=PK:en",
     "https://news.google.com/rss/search?q=pakistan+cricket&hl=en&gl=PK&ceid=PK:en",
+    "https://news.google.com/rss/search?q=world+breaking+news+today&hl=en&gl=US&ceid=US:en",
 ]
 
 HEADERS = {"User-Agent": "Mozilla/5.0 (BreakingBot/1.0)"}
@@ -290,13 +314,6 @@ def _prune_old_stories(posted_today, max_age_hours=2):
     ]
 
 
-# ── Night check ───────────────────────────────────────────────────────────
-
-def _is_night():
-    now_pkt = datetime.now(PKT)
-    return 1 <= now_pkt.hour < 8
-
-
 # ── Posts-this-hour check ─────────────────────────────────────────────────
 
 def _can_post_hour(state, max_per_hour=4):
@@ -461,7 +478,7 @@ def run():
     state = _load_state()
     state["posted_today"] = _prune_old_stories(state.get("posted_today", []))
 
-    threshold = NIGHT_SCORE if _is_night() else SCORE_POST
+    threshold = SCORE_POST
 
     articles = _fetch_recent(max_age_minutes=45)
     logger.info(f"Fetched {len(articles)} recent articles (< 45 min)")
@@ -583,7 +600,7 @@ def check_only():
     Called by breaking_detector.yml before installing full requirements.
     """
     state     = _load_state()
-    threshold = NIGHT_SCORE if _is_night() else SCORE_POST
+    threshold = SCORE_POST
     articles  = _fetch_recent(max_age_minutes=45)
 
     story_clusters = _build_story_clusters(articles)

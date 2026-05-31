@@ -10,10 +10,9 @@ from PIL import Image, ImageDraw, ImageFont, ImageEnhance
 logger = logging.getLogger(__name__)
 
 BRAND_NAME = "VisionaryMinds"
-TAG_RED    = (204, 41, 54)
-PANEL_BASE = (8, 8, 18)
+DARK_NAVY  = (8, 12, 24)
 
-# ── Intent / league badge colours ─────────────────────────────────────────
+# ── Intent badge colours ───────────────────────────────────────────────────
 TAG_COLORS = {
     "WAR":              (204,  41,  54),
     "POLITICS":         ( 26,  86, 219),
@@ -39,7 +38,7 @@ BADGE_LABELS = {
     "WAR":              "WAR & CONFLICT",
     "POLITICS":         "POLITICS",
     "ECONOMY":          "ECONOMY",
-    "DISASTER":         "DISASTER",
+    "DISASTER":         "DISASTER ALERT",
     "SPORTS":           "SPORTS",
     "CRICKET":          "CRICKET",
     "SPORTS_CRICKET":   "CRICKET",
@@ -56,48 +55,48 @@ BADGE_LABELS = {
     "EPL":              "PREMIER LEAGUE",
 }
 
-_LOGO_SEARCH = [
-    os.path.join(os.path.dirname(__file__), "assets", "logo.png"),
-    os.path.join(os.path.dirname(__file__), "logo.png"),
-    os.path.join(os.path.dirname(__file__), "logo.jpg"),
-    os.path.join(os.path.dirname(__file__), "vm_logo.png"),
-]
-_logo_cache = None
-
-# ── Platform configs — Facebook and Instagram both 1080×1080 ──────────────
+# ── Platform configs ───────────────────────────────────────────────────────
+# Facebook and Instagram: 1080×1350 portrait (4:5)
+# Telegram: 1280×720 landscape
 PLATFORMS = {
     "facebook": {
-        "canvas":      (1080, 1080),
-        "badge_fs":    30,
-        "headline_fs": 60,
-        "pad":         44,
-        "logo_size":   66,
-        "brand_fs":    24,
-        "strip_h":     38,
-        "strip_fs":    15,
-        "line_gap":    16,
+        "canvas":        (1080, 1350),
+        "overlay_start": 0.55,   # dark overlay begins here
+        "gradient_h":    180,    # fade zone above overlay
+        "badge_fs":      32,
+        "headline_fs":   58,
+        "logo_fs":       22,
+        "logo_pad_x":    16,
+        "logo_pad_y":    10,
+        "pad":           44,
+        "line_gap":      20,
+        "badge_y_frac":  0.63,   # badge vertical position (fraction of H)
     },
     "instagram": {
-        "canvas":      (1080, 1080),
-        "badge_fs":    30,
-        "headline_fs": 60,
-        "pad":         44,
-        "logo_size":   66,
-        "brand_fs":    24,
-        "strip_h":     38,
-        "strip_fs":    15,
-        "line_gap":    16,
+        "canvas":        (1080, 1350),
+        "overlay_start": 0.55,
+        "gradient_h":    180,
+        "badge_fs":      32,
+        "headline_fs":   58,
+        "logo_fs":       22,
+        "logo_pad_x":    16,
+        "logo_pad_y":    10,
+        "pad":           44,
+        "line_gap":      20,
+        "badge_y_frac":  0.63,
     },
     "telegram": {
-        "canvas":      (1280, 720),
-        "badge_fs":    26,
-        "headline_fs": 52,
-        "pad":         42,
-        "logo_size":   60,
-        "brand_fs":    22,
-        "strip_h":     32,
-        "strip_fs":    14,
-        "line_gap":    13,
+        "canvas":        (1280, 720),
+        "overlay_start": 0.50,
+        "gradient_h":    130,
+        "badge_fs":      26,
+        "headline_fs":   46,
+        "logo_fs":       18,
+        "logo_pad_x":    14,
+        "logo_pad_y":    8,
+        "pad":           38,
+        "line_gap":      14,
+        "badge_y_frac":  0.58,
     },
 }
 
@@ -125,33 +124,6 @@ def _load_font(size, bold=True):
             except Exception:
                 continue
     return ImageFont.load_default()
-
-
-# ── Logo helpers ───────────────────────────────────────────────────────────
-
-def _make_circular(img):
-    s   = min(img.width, img.height)
-    img = img.crop(((img.width - s) // 2, (img.height - s) // 2,
-                    (img.width - s) // 2 + s, (img.height - s) // 2 + s)).convert("RGBA")
-    mask = Image.new("L", (s, s), 0)
-    ImageDraw.Draw(mask).ellipse([0, 0, s - 1, s - 1], fill=255)
-    img.putalpha(mask)
-    return img
-
-
-def _load_logo():
-    global _logo_cache
-    if _logo_cache is not None:
-        return _logo_cache if _logo_cache is not False else None
-    for path in _LOGO_SEARCH:
-        if os.path.exists(path):
-            try:
-                _logo_cache = _make_circular(Image.open(path).convert("RGBA"))
-                return _logo_cache
-            except Exception:
-                continue
-    _logo_cache = False
-    return None
 
 
 # ── Image helpers ──────────────────────────────────────────────────────────
@@ -189,26 +161,11 @@ def _enhance_photo(img):
     return rgb.convert("RGBA")
 
 
-def _top_vignette_overlay(width, height, vignette_h=140, opacity=0.65):
-    arr = np.zeros((height, width, 4), dtype=np.uint8)
-    for y in range(min(vignette_h, height)):
-        t = (1.0 - y / vignette_h) ** 1.6
-        arr[y, :, 3] = int(opacity * 255 * t)
-    return Image.fromarray(arr, "RGBA")
-
-
 # ── Drawing helpers ────────────────────────────────────────────────────────
 
 def _text_wh(draw, text, font):
     b = draw.textbbox((0, 0), text, font=font)
     return b[2] - b[0], b[3] - b[1]
-
-
-def _draw_text_shadowed(draw, xy, text, font, fill=(255, 255, 255), shadow_offset=2):
-    x, y = xy
-    draw.text((x + shadow_offset + 1, y + shadow_offset + 1), text, font=font, fill=(0, 0, 0))
-    draw.text((x + shadow_offset,     y + shadow_offset),     text, font=font, fill=(0, 0, 0))
-    draw.text((x, y), text, font=font, fill=fill)
 
 
 def _wrap_headline(draw, text, font, max_width, max_lines=3):
@@ -226,6 +183,7 @@ def _wrap_headline(draw, text, font, max_width, max_lines=3):
                 break
     if current and len(lines) < max_lines:
         lines.append(" ".join(current))
+    # truncate last line with ellipsis if text was cut
     used = sum(len(l.split()) for l in lines)
     if used < len(words) and lines:
         last = lines[-1]
@@ -235,82 +193,33 @@ def _wrap_headline(draw, text, font, max_width, max_lines=3):
     return lines[:max_lines]
 
 
-def _relative_time(published_at):
-    if not published_at:
-        return ""
-    try:
-        from datetime import datetime, timezone
-        dt   = datetime.fromisoformat(str(published_at).replace("Z", "+00:00"))
-        mins = int((datetime.now(timezone.utc) - dt).total_seconds() / 60)
-        if mins < 1:    return "Just now"
-        if mins < 60:   return f"{mins}m ago"
-        if mins < 1440: return f"{mins // 60}h ago"
-        return f"{mins // 1440}d ago"
-    except Exception:
-        return ""
-
-
-# ── Badge drawing ──────────────────────────────────────────────────────────
-
-def _draw_badge(draw, label, color, pad, badge_fs, badge_top, badge_left):
-    font     = _load_font(badge_fs, bold=True)
-    pad_x, pad_y = 22, 10
-    tb = draw.textbbox((0, 0), label, font=font)
-    bw = tb[2] - tb[0]
-    bh = tb[3] - tb[1]
-    badge_w = bw + pad_x * 2
-    badge_h = bh + pad_y * 2
-
-    sh_r = max(0, color[0] - 60)
-    sh_g = max(0, color[1] - 60)
-    sh_b = max(0, color[2] - 60)
-    draw.rounded_rectangle(
-        [badge_left + 2, badge_top + 3, badge_left + badge_w + 2, badge_top + badge_h + 3],
-        radius=6, fill=(sh_r, sh_g, sh_b),
-    )
-    draw.rounded_rectangle(
-        [badge_left, badge_top, badge_left + badge_w, badge_top + badge_h],
-        radius=6, fill=color,
-    )
-    hl_color = tuple(min(255, c + 50) for c in color)
-    draw.rounded_rectangle(
-        [badge_left + 1, badge_top + 1, badge_left + badge_w - 1, badge_top + 3],
-        radius=3, fill=hl_color,
-    )
-    draw.text(
-        (badge_left + pad_x - tb[0], badge_top + pad_y - tb[1]),
-        label, font=font, fill=(255, 255, 255),
-    )
-    return badge_w, badge_h
-
-
-# ── Core composition — Al Jazeera style ───────────────────────────────────
+# ── Core composition ───────────────────────────────────────────────────────
 
 def compose_image(image_url, platform, intent, headline, source_name,
                   published_at=None, image_path=None, tag_color=None):
     """
-    Full-bleed photo with dark gradient overlay — professional news style.
+    Portrait breaking-news broadcast graphic — Al Jazeera style.
 
       ┌──────────────────────────────────────┐
-      │ ◉ VisionaryMinds    [vivid photo]    │ ← logo top-left, subtle vignette
+      │ ┌──────────────────┐                 │
+      │ │  VisionaryMinds  │  ← white box   │
+      │ └──────────────────┘                 │
       │                                      │
-      │         [full-bleed HD photo]        │
+      │        [full-bleed HD photo]         │
       │                                      │
-      │   ~ ~ ~ dark gradient fades in ~ ~ ~ │
-      │                                      │
-      │  ┌───────────────┐                   │
-      │  │   CRICKET     │  ← coloured badge │
-      │  └───────────────┘                   │
-      │  Short punchy headline here          │ ← bold white, 2-3 lines
-      │  second headline line                │
-      │──────────────────────────────────────│
-      │  VISIONARYMINDS              42m ago │ ← thin accent strip
-      └──────────────────────────────────────┘
+      │   ~ ~ ~ gradient fade ~ ~ ~          │
+      │  ████████████████████████████████    │ ← dark navy overlay
+      │  ┌──────────────┐                   │
+      │  │  POLITICS    │  ← coloured badge │
+      │  └──────────────┘                   │
+      │  Bold white headline text here       │
+      │  second line of headline             │
+      │──────────────────────────────────────│ ← thin accent line
     """
     cfg    = PLATFORMS.get(platform, PLATFORMS["facebook"])
     W, H   = cfg["canvas"]
     pad    = cfg["pad"]
-    accent = tag_color or TAG_COLORS.get(intent.upper(), TAG_RED)
+    accent = tag_color or TAG_COLORS.get(intent.upper(), (204, 41, 54))
 
     # 1. Load and enhance photo ────────────────────────────────────────────
     base = None
@@ -323,97 +232,85 @@ def compose_image(image_url, platform, intent, headline, source_name,
         base = _fetch_image(image_url)
     if base is None:
         logger.warning("No image — dark placeholder")
-        base = Image.new("RGBA", (W, H), (12, 12, 22, 255))
+        base = Image.new("RGBA", (W, H), (12, 16, 30, 255))
     else:
         base = _crop_to_canvas(base, W, H)
         base = _enhance_photo(base)
 
-    # 2. Dark gradient overlay from ~40% down (full-bleed Al Jazeera style) ─
-    grad_start = int(H * 0.40)
+    # 2. Dark navy gradient overlay on the lower portion ───────────────────
+    overlay_y  = int(H * cfg["overlay_start"])
+    gradient_h = cfg["gradient_h"]
+
     arr = np.zeros((H, W, 4), dtype=np.uint8)
-    for y in range(grad_start, H):
-        t = (y - grad_start) / max(H - 1 - grad_start, 1)
-        alpha = int(255 * min(1.0, t ** 0.52))
-        arr[y, :, 0] = PANEL_BASE[0]
-        arr[y, :, 1] = PANEL_BASE[1]
-        arr[y, :, 2] = PANEL_BASE[2]
-        arr[y, :, 3] = alpha
-    gradient = Image.fromarray(arr, "RGBA")
-    photo = Image.alpha_composite(base, gradient)
+    # Smooth gradient fade zone (transparent → dark)
+    fade_start = max(0, overlay_y - gradient_h)
+    for y in range(fade_start, overlay_y):
+        t     = (y - fade_start) / gradient_h
+        alpha = int(230 * (t ** 1.6))
+        arr[y, :, :3] = DARK_NAVY
+        arr[y, :, 3]  = alpha
+    # Solid dark zone
+    arr[overlay_y:, :, :3] = DARK_NAVY
+    arr[overlay_y:, :, 3]  = 235
 
-    # 3. Top vignette so logo stays readable on any bright photo ───────────
-    top_vig = _top_vignette_overlay(W, H, vignette_h=130, opacity=0.65)
-    photo = Image.alpha_composite(photo, top_vig)
+    overlay = Image.fromarray(arr, "RGBA")
+    photo   = Image.alpha_composite(base, overlay).convert("RGB")
+    draw    = ImageDraw.Draw(photo)
 
-    canvas = photo.convert("RGB")
-    draw   = ImageDraw.Draw(canvas)
+    # 3. White logo box — top-left (Al Jazeera style) ─────────────────────
+    logo_font = _load_font(cfg["logo_fs"], bold=True)
+    ltb       = draw.textbbox((0, 0), BRAND_NAME, font=logo_font)
+    ltext_w   = ltb[2] - ltb[0]
+    ltext_h   = ltb[3] - ltb[1]
+    lpx, lpy  = cfg["logo_pad_x"], cfg["logo_pad_y"]
+    box_w     = ltext_w + lpx * 2
+    box_h     = ltext_h + lpy * 2
+    lx, ly    = 20, 20
 
-    # 4. Logo + brand name ─────────────────────────────────────────────────
-    logo_size   = cfg["logo_size"]
-    lx, ly      = 20, 20
-    logo_placed = False
-    _logo       = _load_logo()
-
-    if _logo:
-        backing_size = logo_size + 10
-        backing = Image.new("RGBA", (backing_size, backing_size), (0, 0, 0, 0))
-        ImageDraw.Draw(backing).ellipse(
-            [0, 0, backing_size - 1, backing_size - 1], fill=(0, 0, 0, 130)
-        )
-        canvas_rgba = canvas.convert("RGBA")
-        canvas_rgba.paste(backing, (lx - 5, ly - 5), backing)
-        logo_r = _logo.resize((logo_size, logo_size), Image.LANCZOS)
-        canvas_rgba.paste(logo_r, (lx, ly), logo_r)
-        canvas      = canvas_rgba.convert("RGB")
-        draw        = ImageDraw.Draw(canvas)
-        logo_placed = True
-
-    brand_font = _load_font(cfg["brand_fs"], bold=True)
-    bx = lx + (logo_size + 10 if logo_placed else 0)
-    by = ly + max(0, (logo_size - cfg["brand_fs"]) // 2)
-    _draw_text_shadowed(draw, (bx, by), BRAND_NAME, brand_font, shadow_offset=1)
-
-    # 5. Category badge (sits in the gradient zone) ────────────────────────
-    badge_label = BADGE_LABELS.get(intent.upper(), intent.upper().replace("_", " "))
-    badge_top   = int(H * 0.54)
-    badge_w, badge_h = _draw_badge(
-        draw, badge_label, accent, pad, cfg["badge_fs"], badge_top, pad
+    draw.rectangle([lx, ly, lx + box_w, ly + box_h], fill=(255, 255, 255))
+    draw.text(
+        (lx + lpx - ltb[0], ly + lpy - ltb[1]),
+        BRAND_NAME, font=logo_font, fill=(0, 0, 0),
     )
 
-    # 6. Headline text ─────────────────────────────────────────────────────
+    # 4. Coloured badge (category label) ─────────────────────────────────
+    badge_label = BADGE_LABELS.get(intent.upper(), intent.upper().replace("_", " "))
+    badge_font  = _load_font(cfg["badge_fs"], bold=True)
+    btb         = draw.textbbox((0, 0), badge_label, font=badge_font)
+    btext_w     = btb[2] - btb[0]
+    btext_h     = btb[3] - btb[1]
+    bpx, bpy    = 22, 10
+    badge_w     = btext_w + bpx * 2
+    badge_h     = btext_h + bpy * 2
+    badge_top   = int(H * cfg["badge_y_frac"])
+    badge_left  = pad
+
+    draw.rounded_rectangle(
+        [badge_left, badge_top, badge_left + badge_w, badge_top + badge_h],
+        radius=5, fill=accent,
+    )
+    draw.text(
+        (badge_left + bpx - btb[0], badge_top + bpy - btb[1]),
+        badge_label, font=badge_font, fill=(255, 255, 255),
+    )
+
+    # 5. Bold white headline ───────────────────────────────────────────────
     headline_font = _load_font(cfg["headline_fs"], bold=True)
     max_text_w    = W - pad * 2
     lines         = _wrap_headline(draw, headline, headline_font, max_text_w, max_lines=3)
     line_step     = cfg["headline_fs"] + cfg["line_gap"]
-    text_y        = badge_top + badge_h + 18
+    text_y        = badge_top + badge_h + 22
 
     for line in lines:
-        _draw_text_shadowed(
-            draw, (pad, text_y), line, headline_font,
-            fill=(255, 255, 255), shadow_offset=2,
-        )
+        # drop shadow for legibility
+        draw.text((pad + 2, text_y + 2), line, font=headline_font, fill=(0, 0, 0))
+        draw.text((pad,     text_y),     line, font=headline_font, fill=(255, 255, 255))
         text_y += line_step
 
-    # 7. Bottom watermark strip ────────────────────────────────────────────
-    strip_h = cfg["strip_h"]
-    strip_y = H - strip_h
-    draw.rectangle([0, strip_y, W, H], fill=PANEL_BASE)
-    draw.line([(0, strip_y), (W, strip_y)], fill=accent, width=2)
+    # 6. Thin accent stripe at the very bottom ────────────────────────────
+    draw.rectangle([0, H - 6, W, H], fill=accent)
 
-    strip_font = _load_font(cfg["strip_fs"], bold=False)
-    draw.text(
-        (pad, strip_y + (strip_h - cfg["strip_fs"]) // 2),
-        BRAND_NAME.upper(), font=strip_font, fill=(140, 140, 170),
-    )
-    rel_time = _relative_time(published_at)
-    if rel_time:
-        tw, _ = _text_wh(draw, rel_time, strip_font)
-        draw.text(
-            (W - tw - pad, strip_y + (strip_h - cfg["strip_fs"]) // 2),
-            rel_time, font=strip_font, fill=(140, 140, 170),
-        )
-
-    return canvas
+    return photo
 
 
 # ── Public entry point ─────────────────────────────────────────────────────
@@ -421,7 +318,7 @@ def compose_image(image_url, platform, intent, headline, source_name,
 def save_platform_images(image_url, intent, headline, source_name,
                          published_at=None, output_dir=None, image_path=None,
                          tag_color=None):
-    """Generate a branded premium image for every active platform."""
+    """Generate a branded portrait news image for every active platform."""
     if output_dir is None:
         output_dir = tempfile.mkdtemp(prefix="vm_images_")
 

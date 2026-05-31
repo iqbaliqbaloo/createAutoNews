@@ -52,8 +52,13 @@ from trend_detector import trending_context_string
 
 # ── Config ────────────────────────────────────────────────────────────────
 PKT            = pytz.timezone("Asia/Karachi")
+<<<<<<< HEAD
 FB_DAILY_LIMIT = 50
+=======
+FB_DAILY_LIMIT = 30
+>>>>>>> 2be5059 (updated)
 IG_DAILY_LIMIT = 45
+TG_DAILY_LIMIT = 30
 ARTICLE_CAP    = 30   # hard cap per run (Step 1)
 CLASSIFY_TOP   = 10   # classify top-N fresh articles for intent selection
 
@@ -74,15 +79,16 @@ def run_pipeline():
     try:
         fb_count = get_today_count(conn, "facebook")
         ig_count = get_today_count(conn, "instagram")
+        tg_count = get_today_count(conn, "telegram")
         print(f"\nFacebook posts today:  {fb_count}/{FB_DAILY_LIMIT}")
         print(f"Instagram posts today: {ig_count}/{IG_DAILY_LIMIT}")
+        print(f"Telegram posts today:  {tg_count}/{TG_DAILY_LIMIT}")
 
         # ── ENGAGEMENT TIME PREDICTOR ──────────────────────────────────────
         best_hours()   # prints best PKT hours once enough history exists
 
         if fb_count >= FB_DAILY_LIMIT:
-            print("Facebook daily limit reached — exiting.")
-            return
+            print(f"Facebook daily limit reached ({fb_count}/{FB_DAILY_LIMIT}) — skipping Facebook only.")
 
         # ── STEP 1: FETCH ──────────────────────────────────────────────────
         _sep()
@@ -139,9 +145,12 @@ def run_pipeline():
         unique = deduplicate(relevant, threshold=0.85)
 
         # Remove already-posted articles
+        # An article is skipped only when every platform has received it;
+        # if even one platform missed it, keep it so that platform can retry.
+        _ALL_PLATFORMS = ("facebook", "instagram", "telegram")
         fresh = []
         for a in unique:
-            if already_posted(conn, a["hash"]):
+            if all(already_posted(conn, a["hash"], p) for p in _ALL_PLATFORMS):
                 continue
             if title_already_posted(conn, a["title"]):
                 continue
@@ -292,13 +301,16 @@ def run_pipeline():
             else:
                 print("  Instagram failed")
 
-        if "telegram" in platforms_ready and "telegram" in platform_images:
+        if tg_count >= TG_DAILY_LIMIT:
+            print(f"  Telegram daily limit reached ({tg_count}/{TG_DAILY_LIMIT}) — skipping")
+        elif "telegram" in platforms_ready and "telegram" in platform_images:
             tg_ok = post_to_telegram(captions["telegram"], platform_images["telegram"])
             if tg_ok:
                 queue_mark_posted("telegram")
                 mark_posted(conn, article["hash"], article["title"], "telegram")
+                tg_count += 1
                 posted_platforms.append("telegram")
-                print("  Telegram ✔")
+                print(f"  Telegram [TG {tg_count}/{TG_DAILY_LIMIT}] ✔")
             else:
                 print("  Telegram failed")
 
@@ -350,6 +362,7 @@ def run_pipeline():
         print(f"CLIP:      {best_clip:.3f}")
         print(f"FB COUNT:  {fb_count}/{FB_DAILY_LIMIT}")
         print(f"IG COUNT:  {ig_count}/{IG_DAILY_LIMIT}")
+        print(f"TG COUNT:  {tg_count}/{TG_DAILY_LIMIT}")
         print(f"END:       {datetime.now(PKT).strftime('%I:%M %p PKT')}")
         _sep("═")
 
