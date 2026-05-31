@@ -147,9 +147,10 @@ Classify this article and generate captions. Return ONLY this JSON structure:
     "ambiguous": false
   }},
   "captions": {{
-    "facebook":  "...",
-    "instagram": "...",
-    "telegram":  "..."
+    "facebook":      "...",
+    "instagram":     "...",
+    "telegram":      "...",
+    "image_headline": "..."
   }}
 }}
 
@@ -158,37 +159,41 @@ RULES — Intent:
 - Set ambiguous=true if top score < 0.50
 - primary = highest-score label; secondary = second-highest
 
-RULES — Facebook caption (MAXIMUM ORGANIC REACH — max 480 chars):
-GOAL: Make people STOP scrolling, REACT, COMMENT, and SHARE.
-- Line 1 (TOPIC LABEL): Start with the topic category in this exact format — the label depends on the intent classification:
-  WAR → "⚔️ WAR & CONFLICT |"
-  POLITICS → "🏛️ POLITICS |"
-  ECONOMY → "📈 ECONOMY |"
-  DISASTER → "🚨 DISASTER ALERT |"
-  SPORTS → "🏆 SPORTS |"
-  Then immediately after the label, write the news hook as a factual sentence. Example: "🏛️ POLITICS | A historic agreement has been reached between two major world powers."
-- Write as a news broadcaster. NEVER use phrases like "fans need to know", "you need to see this", or any language targeting a specific audience group.
-- Lines 2-3: 2 punchy factual sentences in present tense revealing the key facts
-- Line 4 (CTA): End with ONE of: "Share this so your friends are informed." / "Tag someone who needs to see this." / "Share this — everyone deserves to know." / "Drop a reaction if this shocked you."
-- Final line: 5-8 hashtags including #VisionaryMinds #BreakingNews and 3-4 topic-specific tags from: {intent_tags}
+RULES — Image Headline (overlay text printed on the image, max 8 words):
+- Write 5-8 plain words that state the single most important fact
+- Simple words — write as if telling a friend what happened
+- No emojis, no hashtags, no punctuation at the end
+- Good examples: "Storm Delays Gujarat Titans Arrival in Ahmedabad" / "Trump Cancels US 250th Anniversary Concerts"
+- Bad examples: anything over 8 words, anything with hashtags or emojis
+
+RULES — Facebook caption (max 480 chars):
+GOAL: Easy to read, easy to share. Write in simple plain English — like a knowledgeable friend explaining the news.
+- Line 1 (TOPIC LABEL): Start with:
+  WAR → "⚔️ WAR & CONFLICT |"  POLITICS → "🏛️ POLITICS |"
+  ECONOMY → "📈 ECONOMY |"       DISASTER → "🚨 DISASTER ALERT |"  SPORTS → "🏆 SPORTS |"
+  Then write one clear sentence about what happened. Example: "🏆 SPORTS | The match was delayed because of a sudden storm."
+- Lines 2-3: 2 short, simple sentences. Use easy words. Say who, what, where.
+- Line 4 (CTA): End with one of: "Share this so your friends know." / "Tag someone who should see this." / "Drop a reaction below."
+- Final line: 5-8 hashtags including #VisionaryMinds #BreakingNews and topic-specific tags from: {intent_tags}
 - No URLs. Max 2 emojis.
 
 RULES — Instagram caption (max 300 visible chars + hashtags):
-- Line 1: Topic label + hook — e.g. "⚔️ WAR & CONFLICT 🔴" or "🏆 SPORTS 🔴" — then one punchy factual sentence
-- 2 short punchy factual sentences on separate lines
+- Write in simple, easy-to-understand English. Short sentences. Clear words.
+- Line 1: Topic label + one clear sentence about what happened
+  e.g. "🏆 SPORTS 🔴 Gujarat Titans flight was delayed due to a storm."
+- Lines 2-3: 2 short simple facts on separate lines
 - Add: "Follow @VisionaryMinds for live updates 👇"
 - Do NOT include any URL or link
 - 25-30 hashtags including #VisionaryMinds #BreakingNews #WorldNews #News #CurrentAffairs #Trending #Viral #MustSee #TopStory
-- Add location-specific hashtags if a country/city is mentioned
-- Detect intent → add from: {intent_tags}
+- Add location hashtags if a country/city is mentioned
+- Add topic-specific tags from: {intent_tags}
 
 RULES — Telegram caption (max 800 chars):
-- Start: "🔴 **BREAKING: {{summary}}**"
-- 3-4 factual sentences (most detailed version)
-- Include who/what/where/when
+- Start: "🔴 **BREAKING: {{one sentence summary}}**"
+- 3-4 factual sentences in simple plain English. Include who/what/where/when.
 - End with 3-5 hashtags including #VisionaryMinds #BreakingNews
 - Do NOT include any URL or link
-- Use **bold** for headline only
+- Use **bold** for the opening headline only
 
 Brand tags always include: #VisionaryMinds #VMUpdates
 {f"Trending now — weave these into hashtags if relevant: {trending_context}" if trending_context else ""}

@@ -363,16 +363,17 @@ def _run_fast_pipeline(article, caption_prefix=""):
     )
     _ps.MAX_RETRY_LOOPS = orig_loops
 
+    captions = intent_result["captions"]
+    image_headline = (captions.get("image_headline") or article["title"]).strip()
+
     platform_images = save_platform_images(
         image_url,
         primary_intent,
-        article["title"],
+        image_headline,
         article.get("domain", "Unknown"),
         article.get("published_at"),
         image_path=best_image_path,
     )
-
-    captions = intent_result["captions"]
     if caption_prefix:
         for p in captions:
             captions[p] = caption_prefix + captions[p]

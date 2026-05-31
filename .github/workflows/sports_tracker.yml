@@ -16,8 +16,8 @@ jobs:
     timeout-minutes: 20
 
     concurrency:
-      group: sports-tracker
-      cancel-in-progress: true
+      group: news-poster
+      cancel-in-progress: false
 
     steps:
       - name: Checkout repo

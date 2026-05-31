@@ -207,10 +207,10 @@ def run_pipeline():
         platform_images = save_platform_images(
             image_url,
             primary_intent,
-            article["title"],
+            image_headline,
             source_display,
             published_at,
-            image_path=best_image_path,   # use pre-downloaded file directly
+            image_path=best_image_path,
         )
         print(f"Images composed: {list(platform_images.keys())}")
 
@@ -220,6 +220,8 @@ def run_pipeline():
 
         # ── STEP 10: CAPTIONS (generated in Step 5, retrieved here) ───────
         captions = intent_result["captions"]
+        # Short image overlay headline from LLM (falls back to article title)
+        image_headline = (captions.get("image_headline") or article["title"]).strip()
 
         # ── STEP 11: SCHEDULER QUEUE ───────────────────────────────────────
         _sep()

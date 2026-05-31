@@ -9,9 +9,9 @@ from PIL import Image, ImageDraw, ImageFont, ImageEnhance
 
 logger = logging.getLogger(__name__)
 
-BRAND_NAME  = "VisionaryMinds"
-TAG_RED     = (204,  41,  54)
-PANEL_BASE  = (8,    8,   16)   # deep dark blue-black for panel
+BRAND_NAME = "VisionaryMinds"
+TAG_RED    = (204, 41, 54)
+PANEL_BASE = (8, 8, 18)
 
 # ── Intent / league badge colours ─────────────────────────────────────────
 TAG_COLORS = {
@@ -35,7 +35,6 @@ TAG_COLORS = {
     "EPL":              ( 56,   0,  60),
 }
 
-# ── Human-readable badge labels ────────────────────────────────────────────
 BADGE_LABELS = {
     "WAR":              "WAR & CONFLICT",
     "POLITICS":         "POLITICS",
@@ -57,7 +56,6 @@ BADGE_LABELS = {
     "EPL":              "PREMIER LEAGUE",
 }
 
-# ── Logo search paths ──────────────────────────────────────────────────────
 _LOGO_SEARCH = [
     os.path.join(os.path.dirname(__file__), "assets", "logo.png"),
     os.path.join(os.path.dirname(__file__), "logo.png"),
@@ -66,49 +64,40 @@ _LOGO_SEARCH = [
 ]
 _logo_cache = None
 
-# ── Platform configs ───────────────────────────────────────────────────────
+# ── Platform configs — Facebook and Instagram both 1080×1080 ──────────────
 PLATFORMS = {
     "facebook": {
-        "canvas":        (1200, 630),
-        "panel_ratio":   0.43,       # fraction of canvas height
-        "blend_h":       90,         # gradient blend zone height (px)
-        "badge_fs":      25,
-        "headline_fs":   50,
-        "pad":           38,         # left/right content padding
-        "logo_size":     56,
-        "brand_fs":      21,
-        "strip_h":       30,         # bottom watermark strip
-        "strip_fs":      13,
-        "accent_w":      5,          # left accent bar width
-        "line_gap":      12,         # headline line gap
+        "canvas":      (1080, 1080),
+        "badge_fs":    30,
+        "headline_fs": 60,
+        "pad":         44,
+        "logo_size":   66,
+        "brand_fs":    24,
+        "strip_h":     38,
+        "strip_fs":    15,
+        "line_gap":    16,
     },
     "instagram": {
-        "canvas":        (1080, 1080),
-        "panel_ratio":   0.40,
-        "blend_h":       100,
-        "badge_fs":      28,
-        "headline_fs":   58,
-        "pad":           40,
-        "logo_size":     62,
-        "brand_fs":      23,
-        "strip_h":       34,
-        "strip_fs":      14,
-        "accent_w":      5,
-        "line_gap":      14,
+        "canvas":      (1080, 1080),
+        "badge_fs":    30,
+        "headline_fs": 60,
+        "pad":         44,
+        "logo_size":   66,
+        "brand_fs":    24,
+        "strip_h":     38,
+        "strip_fs":    15,
+        "line_gap":    16,
     },
     "telegram": {
-        "canvas":        (1280, 720),
-        "panel_ratio":   0.43,
-        "blend_h":       90,
-        "badge_fs":      25,
-        "headline_fs":   50,
-        "pad":           38,
-        "logo_size":     56,
-        "brand_fs":      21,
-        "strip_h":       30,
-        "strip_fs":      13,
-        "accent_w":      5,
-        "line_gap":      12,
+        "canvas":      (1280, 720),
+        "badge_fs":    26,
+        "headline_fs": 52,
+        "pad":         42,
+        "logo_size":   60,
+        "brand_fs":    22,
+        "strip_h":     32,
+        "strip_fs":    14,
+        "line_gap":    13,
     },
 }
 
@@ -141,11 +130,11 @@ def _load_font(size, bold=True):
 # ── Logo helpers ───────────────────────────────────────────────────────────
 
 def _make_circular(img):
-    s    = min(img.width, img.height)
-    img  = img.crop(((img.width - s)//2, (img.height - s)//2,
-                     (img.width - s)//2 + s, (img.height - s)//2 + s)).convert("RGBA")
+    s   = min(img.width, img.height)
+    img = img.crop(((img.width - s) // 2, (img.height - s) // 2,
+                    (img.width - s) // 2 + s, (img.height - s) // 2 + s)).convert("RGBA")
     mask = Image.new("L", (s, s), 0)
-    ImageDraw.Draw(mask).ellipse([0, 0, s-1, s-1], fill=255)
+    ImageDraw.Draw(mask).ellipse([0, 0, s - 1, s - 1], fill=255)
     img.putalpha(mask)
     return img
 
@@ -183,72 +172,29 @@ def _fetch_image(url):
 def _crop_to_canvas(img, w, h):
     iw, ih = img.size
     if (iw / ih) > (w / h):
-        nw = int(ih * w / h)
-        img = img.crop(((iw - nw)//2, 0, (iw - nw)//2 + nw, ih))
+        nw  = int(ih * w / h)
+        img = img.crop(((iw - nw) // 2, 0, (iw - nw) // 2 + nw, ih))
     else:
-        nh = int(iw * h / w)
-        img = img.crop((0, (ih - nh)//2, iw, (ih - nh)//2 + nh))
+        nh  = int(iw * h / w)
+        img = img.crop((0, (ih - nh) // 2, iw, (ih - nh) // 2 + nh))
     return img.resize((w, h), Image.LANCZOS)
 
 
 def _enhance_photo(img):
-    """Vivid, contrasty — premium news feel (not washed out)."""
     rgb = img.convert("RGB")
-    rgb = ImageEnhance.Color(rgb).enhance(1.18)      # +18 % saturation
-    rgb = ImageEnhance.Contrast(rgb).enhance(1.10)   # +10 % contrast
-    rgb = ImageEnhance.Sharpness(rgb).enhance(1.12)  # slight sharpening
+    rgb = ImageEnhance.Color(rgb).enhance(1.20)
+    rgb = ImageEnhance.Contrast(rgb).enhance(1.12)
+    rgb = ImageEnhance.Sharpness(rgb).enhance(1.15)
+    rgb = ImageEnhance.Brightness(rgb).enhance(1.04)
     return rgb.convert("RGBA")
 
 
-def _top_vignette_overlay(width, height, vignette_h=140, opacity=0.72):
-    """
-    Gradient dark overlay at the very top so the logo stays readable
-    against any bright sky or light photo area.
-    """
+def _top_vignette_overlay(width, height, vignette_h=140, opacity=0.65):
     arr = np.zeros((height, width, 4), dtype=np.uint8)
     for y in range(min(vignette_h, height)):
-        t = (1.0 - y / vignette_h) ** 1.6   # steep easing
+        t = (1.0 - y / vignette_h) ** 1.6
         arr[y, :, 3] = int(opacity * 255 * t)
     return Image.fromarray(arr, "RGBA")
-
-
-def _blend_zone_overlay(width, blend_h, panel_color):
-    """
-    Gradient that smoothly dissolves the photo into the dark panel over
-    blend_h pixels above the hard panel edge. Creates cinematic depth.
-    """
-    r, g, b = panel_color
-    arr      = np.zeros((blend_h, width, 4), dtype=np.uint8)
-    arr[:, :, 0] = r
-    arr[:, :, 1] = g
-    arr[:, :, 2] = b
-    for y in range(blend_h):
-        t = (y / (blend_h - 1)) ** 1.8   # slow start, fast finish
-        arr[y, :, 3] = int(255 * t)
-    return Image.fromarray(arr, "RGBA")
-
-
-def _panel_gradient(width, panel_h, panel_color, accent_color):
-    """
-    Dark panel with subtle depth gradient: slightly lighter at top,
-    deepest at bottom. Very slight accent tint in top 30px.
-    """
-    r, g, b = panel_color
-    ar, ag, ab = accent_color
-    arr = np.zeros((panel_h, width, 3), dtype=np.uint8)
-    for y in range(panel_h):
-        t = y / max(panel_h - 1, 1)     # 0.0 at panel top → 1.0 at bottom
-        base_v = int(r + (2 - 2*t))
-        # top 30px: faint accent tint
-        if y < 30:
-            blend = (30 - y) / 30 * 0.08
-            rv = int(base_v * (1 - blend) + ar * blend)
-            gv = int(base_v * (1 - blend) + ag * blend)
-            bv = int(base_v * (1 - blend) + ab * blend)
-        else:
-            rv = gv = bv = max(0, base_v)
-        arr[y, :] = [rv, gv, bv]
-    return Image.fromarray(arr, "RGB")
 
 
 # ── Drawing helpers ────────────────────────────────────────────────────────
@@ -258,14 +204,10 @@ def _text_wh(draw, text, font):
     return b[2] - b[0], b[3] - b[1]
 
 
-def _draw_text_shadowed(draw, xy, text, font, fill=(255, 255, 255),
-                        shadow_offset=2, shadow_opacity=200):
+def _draw_text_shadowed(draw, xy, text, font, fill=(255, 255, 255), shadow_offset=2):
     x, y = xy
-    # Multi-layer shadow for premium depth
-    draw.text((x+shadow_offset+1, y+shadow_offset+1), text, font=font,
-              fill=(0, 0, 0))
-    draw.text((x+shadow_offset,   y+shadow_offset),   text, font=font,
-              fill=(0, 0, 0))
+    draw.text((x + shadow_offset + 1, y + shadow_offset + 1), text, font=font, fill=(0, 0, 0))
+    draw.text((x + shadow_offset,     y + shadow_offset),     text, font=font, fill=(0, 0, 0))
     draw.text((x, y), text, font=font, fill=fill)
 
 
@@ -284,7 +226,6 @@ def _wrap_headline(draw, text, font, max_width, max_lines=3):
                 break
     if current and len(lines) < max_lines:
         lines.append(" ".join(current))
-    # Truncate last line with ellipsis if content overflows
     used = sum(len(l.split()) for l in lines)
     if used < len(words) and lines:
         last = lines[-1]
@@ -303,8 +244,8 @@ def _relative_time(published_at):
         mins = int((datetime.now(timezone.utc) - dt).total_seconds() / 60)
         if mins < 1:    return "Just now"
         if mins < 60:   return f"{mins}m ago"
-        if mins < 1440: return f"{mins//60}h ago"
-        return f"{mins//1440}d ago"
+        if mins < 1440: return f"{mins // 60}h ago"
+        return f"{mins // 1440}d ago"
     except Exception:
         return ""
 
@@ -312,40 +253,30 @@ def _relative_time(published_at):
 # ── Badge drawing ──────────────────────────────────────────────────────────
 
 def _draw_badge(draw, label, color, pad, badge_fs, badge_top, badge_left):
-    """
-    Premium pill badge with a subtle dark shadow offset beneath it.
-    Returns (badge_w, badge_h) so the caller knows where to start the headline.
-    """
-    font      = _load_font(badge_fs, bold=True)
-    pad_x, pad_y = 20, 10
+    font     = _load_font(badge_fs, bold=True)
+    pad_x, pad_y = 22, 10
     tb = draw.textbbox((0, 0), label, font=font)
     bw = tb[2] - tb[0]
     bh = tb[3] - tb[1]
     badge_w = bw + pad_x * 2
     badge_h = bh + pad_y * 2
 
-    # Shadow layer (2px offset, darkened colour)
     sh_r = max(0, color[0] - 60)
     sh_g = max(0, color[1] - 60)
     sh_b = max(0, color[2] - 60)
     draw.rounded_rectangle(
-        [badge_left + 2, badge_top + 3,
-         badge_left + badge_w + 2, badge_top + badge_h + 3],
+        [badge_left + 2, badge_top + 3, badge_left + badge_w + 2, badge_top + badge_h + 3],
         radius=6, fill=(sh_r, sh_g, sh_b),
     )
-    # Main badge
     draw.rounded_rectangle(
         [badge_left, badge_top, badge_left + badge_w, badge_top + badge_h],
         radius=6, fill=color,
     )
-    # Subtle inner highlight — thin lighter line at top of badge
     hl_color = tuple(min(255, c + 50) for c in color)
     draw.rounded_rectangle(
-        [badge_left + 1, badge_top + 1,
-         badge_left + badge_w - 1, badge_top + 3],
+        [badge_left + 1, badge_top + 1, badge_left + badge_w - 1, badge_top + 3],
         radius=3, fill=hl_color,
     )
-    # Text
     draw.text(
         (badge_left + pad_x - tb[0], badge_top + pad_y - tb[1]),
         label, font=font, fill=(255, 255, 255),
@@ -353,42 +284,35 @@ def _draw_badge(draw, label, color, pad, badge_fs, badge_top, badge_left):
     return badge_w, badge_h
 
 
-# ── Core composition ───────────────────────────────────────────────────────
+# ── Core composition — Al Jazeera style ───────────────────────────────────
 
 def compose_image(image_url, platform, intent, headline, source_name,
                   published_at=None, image_path=None, tag_color=None):
     """
-    Premium news-style composition:
+    Full-bleed photo with dark gradient overlay — professional news style.
 
       ┌──────────────────────────────────────┐
-      │ ◉ VisionaryMinds      [vivid photo]  │ ← logo + brand (top-left vignette)
+      │ ◉ VisionaryMinds    [vivid photo]    │ ← logo top-left, subtle vignette
       │                                      │
-      │           [full-bleed photo]         │
+      │         [full-bleed HD photo]        │
       │                                      │
-      │~~~ cinematic gradient blend zone ~~~~│ ← smooth photo → panel dissolve
-      │▌ ┌─────────────────┐                 │ ← accent bar + badge (overlaps)
-      │▌ │  BREAKING NEWS  │                 │
-      │▌ └─────────────────┘                 │
-      │▌  Large bold headline text here      │
-      │▌  second line of headline            │
+      │   ~ ~ ~ dark gradient fades in ~ ~ ~ │
+      │                                      │
+      │  ┌───────────────┐                   │
+      │  │   CRICKET     │  ← coloured badge │
+      │  └───────────────┘                   │
+      │  Short punchy headline here          │ ← bold white, 2-3 lines
+      │  second headline line                │
       │──────────────────────────────────────│
-      │  VisionaryMinds                42m   │ ← watermark strip
+      │  VISIONARYMINDS              42m ago │ ← thin accent strip
       └──────────────────────────────────────┘
     """
-    cfg   = PLATFORMS.get(platform, PLATFORMS["facebook"])
-    W, H  = cfg["canvas"]
+    cfg    = PLATFORMS.get(platform, PLATFORMS["facebook"])
+    W, H   = cfg["canvas"]
+    pad    = cfg["pad"]
+    accent = tag_color or TAG_COLORS.get(intent.upper(), TAG_RED)
 
-    panel_h    = int(H * cfg["panel_ratio"])
-    strip_h    = cfg["strip_h"]
-    panel_y    = H - panel_h               # where the panel starts
-    blend_h    = cfg["blend_h"]
-    blend_y    = panel_y - blend_h         # where blend zone starts
-    pad        = cfg["pad"]
-    accent_w   = cfg["accent_w"]
-
-    accent  = tag_color or TAG_COLORS.get(intent.upper(), TAG_RED)
-
-    # ── 1. Load and enhance photo ──────────────────────────────────────────
+    # 1. Load and enhance photo ────────────────────────────────────────────
     base = None
     if image_path and os.path.exists(image_path):
         try:
@@ -399,68 +323,45 @@ def compose_image(image_url, platform, intent, headline, source_name,
         base = _fetch_image(image_url)
     if base is None:
         logger.warning("No image — dark placeholder")
-        base = Image.new("RGBA", (W, H), (15, 15, 25, 255))
+        base = Image.new("RGBA", (W, H), (12, 12, 22, 255))
     else:
         base = _crop_to_canvas(base, W, H)
         base = _enhance_photo(base)
 
-    # ── 2. Top vignette (logo readability) ────────────────────────────────
-    top_vig = _top_vignette_overlay(W, H, vignette_h=150, opacity=0.70)
-    photo   = Image.alpha_composite(base, top_vig)
+    # 2. Dark gradient overlay from ~40% down (full-bleed Al Jazeera style) ─
+    grad_start = int(H * 0.40)
+    arr = np.zeros((H, W, 4), dtype=np.uint8)
+    for y in range(grad_start, H):
+        t = (y - grad_start) / max(H - 1 - grad_start, 1)
+        alpha = int(255 * min(1.0, t ** 0.52))
+        arr[y, :, 0] = PANEL_BASE[0]
+        arr[y, :, 1] = PANEL_BASE[1]
+        arr[y, :, 2] = PANEL_BASE[2]
+        arr[y, :, 3] = alpha
+    gradient = Image.fromarray(arr, "RGBA")
+    photo = Image.alpha_composite(base, gradient)
 
-    # ── 3. Blend zone (photo → panel) ─────────────────────────────────────
-    if blend_y >= 0:
-        blend_ov = _blend_zone_overlay(W, blend_h, PANEL_BASE)
-        blend_canvas = Image.new("RGBA", (W, H), (0, 0, 0, 0))
-        blend_canvas.paste(blend_ov, (0, blend_y))
-        photo = Image.alpha_composite(photo, blend_canvas)
+    # 3. Top vignette so logo stays readable on any bright photo ───────────
+    top_vig = _top_vignette_overlay(W, H, vignette_h=130, opacity=0.65)
+    photo = Image.alpha_composite(photo, top_vig)
 
     canvas = photo.convert("RGB")
+    draw   = ImageDraw.Draw(canvas)
 
-    # ── 4. Dark panel with depth gradient ─────────────────────────────────
-    panel_img = _panel_gradient(W, panel_h, PANEL_BASE, accent)
-    canvas.paste(panel_img, (0, panel_y))
-
-    draw = ImageDraw.Draw(canvas)
-
-    # ── 5. Bottom watermark strip ──────────────────────────────────────────
-    strip_y = H - strip_h
-    strip_color = tuple(max(0, c - 4) for c in PANEL_BASE)   # slightly darker
-    draw.rectangle([0, strip_y, W, H], fill=strip_color)
-    # Thin separator line
-    draw.line([(0, strip_y), (W, strip_y)], fill=(40, 40, 60), width=1)
-
-    strip_font = _load_font(cfg["strip_fs"], bold=False)
-    draw.text((pad, strip_y + (strip_h - cfg["strip_fs"]) // 2),
-              BRAND_NAME.upper(), font=strip_font, fill=(120, 120, 150))
-
-    rel_time = _relative_time(published_at)
-    if rel_time:
-        tw, _ = _text_wh(draw, rel_time, strip_font)
-        draw.text((W - tw - pad, strip_y + (strip_h - cfg["strip_fs"]) // 2),
-                  rel_time, font=strip_font, fill=(120, 120, 150))
-
-    # ── 6. Left accent bar (full panel height, excl. strip) ───────────────
-    draw.rectangle([0, panel_y, accent_w, strip_y], fill=accent)
-
-    # ── 7. Thin accent separator line at top of panel ─────────────────────
-    draw.line([(accent_w, panel_y), (W, panel_y)], fill=accent, width=2)
-
-    # ── 8. Logo + brand name — top-left ───────────────────────────────────
-    logo_size = cfg["logo_size"]
-    lx, ly    = 18, 14
+    # 4. Logo + brand name ─────────────────────────────────────────────────
+    logo_size   = cfg["logo_size"]
+    lx, ly      = 20, 20
     logo_placed = False
-    _logo = _load_logo()
+    _logo       = _load_logo()
 
     if _logo:
-        # Subtle dark circle backing for logo
         backing_size = logo_size + 10
-        backing      = Image.new("RGBA", (backing_size, backing_size), (0, 0, 0, 0))
-        bd           = ImageDraw.Draw(backing)
-        bd.ellipse([0, 0, backing_size - 1, backing_size - 1], fill=(0, 0, 0, 130))
+        backing = Image.new("RGBA", (backing_size, backing_size), (0, 0, 0, 0))
+        ImageDraw.Draw(backing).ellipse(
+            [0, 0, backing_size - 1, backing_size - 1], fill=(0, 0, 0, 130)
+        )
         canvas_rgba = canvas.convert("RGBA")
         canvas_rgba.paste(backing, (lx - 5, ly - 5), backing)
-        # Logo
         logo_r = _logo.resize((logo_size, logo_size), Image.LANCZOS)
         canvas_rgba.paste(logo_r, (lx, ly), logo_r)
         canvas      = canvas_rgba.convert("RGB")
@@ -472,38 +373,45 @@ def compose_image(image_url, platform, intent, headline, source_name,
     by = ly + max(0, (logo_size - cfg["brand_fs"]) // 2)
     _draw_text_shadowed(draw, (bx, by), BRAND_NAME, brand_font, shadow_offset=1)
 
-    # ── 9. Badge — overlapping the accent line ─────────────────────────────
+    # 5. Category badge (sits in the gradient zone) ────────────────────────
     badge_label = BADGE_LABELS.get(intent.upper(), intent.upper().replace("_", " "))
-    badge_left  = pad + accent_w + 4
-
-    # Badge sits with bottom ~12px inside the panel (overlaps accent line)
-    badge_top_provisional = panel_y - 10
-    badge_fs = cfg["badge_fs"]
-
-    # Draw badge and get its dimensions
-    font_b    = _load_font(badge_fs, bold=True)
-    tb_b      = draw.textbbox((0, 0), badge_label, font=font_b)
-    badge_h_px = (tb_b[3] - tb_b[1]) + 20    # text + padding
-    badge_top  = panel_y - badge_h_px + 14    # badge mostly in panel, top peeks into photo
-
+    badge_top   = int(H * 0.54)
     badge_w, badge_h = _draw_badge(
-        draw, badge_label, accent,
-        pad, badge_fs, badge_top, badge_left,
+        draw, badge_label, accent, pad, cfg["badge_fs"], badge_top, pad
     )
 
-    # ── 10. Headline — large, left-aligned, inside panel ─────────────────
+    # 6. Headline text ─────────────────────────────────────────────────────
     headline_font = _load_font(cfg["headline_fs"], bold=True)
-    max_text_w    = W - pad * 2 - accent_w - 8
+    max_text_w    = W - pad * 2
     lines         = _wrap_headline(draw, headline, headline_font, max_text_w, max_lines=3)
     line_step     = cfg["headline_fs"] + cfg["line_gap"]
-    text_y        = badge_top + badge_h + 16
+    text_y        = badge_top + badge_h + 18
 
     for line in lines:
         _draw_text_shadowed(
-            draw, (badge_left, text_y), line,
-            headline_font, fill=(255, 255, 255), shadow_offset=2,
+            draw, (pad, text_y), line, headline_font,
+            fill=(255, 255, 255), shadow_offset=2,
         )
         text_y += line_step
+
+    # 7. Bottom watermark strip ────────────────────────────────────────────
+    strip_h = cfg["strip_h"]
+    strip_y = H - strip_h
+    draw.rectangle([0, strip_y, W, H], fill=PANEL_BASE)
+    draw.line([(0, strip_y), (W, strip_y)], fill=accent, width=2)
+
+    strip_font = _load_font(cfg["strip_fs"], bold=False)
+    draw.text(
+        (pad, strip_y + (strip_h - cfg["strip_fs"]) // 2),
+        BRAND_NAME.upper(), font=strip_font, fill=(140, 140, 170),
+    )
+    rel_time = _relative_time(published_at)
+    if rel_time:
+        tw, _ = _text_wh(draw, rel_time, strip_font)
+        draw.text(
+            (W - tw - pad, strip_y + (strip_h - cfg["strip_fs"]) // 2),
+            rel_time, font=strip_font, fill=(140, 140, 170),
+        )
 
     return canvas
 
@@ -524,7 +432,7 @@ def save_platform_images(image_url, intent, headline, source_name,
                                  source_name, published_at,
                                  image_path=image_path, tag_color=tag_color)
             path = os.path.join(output_dir, f"{platform}.jpg")
-            img.save(path, "JPEG", quality=94, optimize=True)
+            img.save(path, "JPEG", quality=96, optimize=True, subsampling=0)
             paths[platform] = path
             logger.info(f"Saved {platform} → {path}")
         except Exception as e:
