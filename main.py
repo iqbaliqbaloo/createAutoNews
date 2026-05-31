@@ -52,7 +52,7 @@ from trend_detector import trending_context_string
 
 # ── Config ────────────────────────────────────────────────────────────────
 PKT            = pytz.timezone("Asia/Karachi")
-FB_DAILY_LIMIT = 10
+FB_DAILY_LIMIT = 50
 IG_DAILY_LIMIT = 45
 ARTICLE_CAP    = 30   # hard cap per run (Step 1)
 CLASSIFY_TOP   = 10   # classify top-N fresh articles for intent selection
