@@ -324,7 +324,7 @@ def _record_hour_post(state):
 
 # ── Fast pipeline ─────────────────────────────────────────────────────────
 
-def _run_fast_pipeline(article, caption_prefix=""):
+def _run_fast_pipeline(article, caption_prefix="", score=0):
     """
     Skips: semantic_filter, deduplicator (full), scheduler cooldown.
     Runs:  fake_news_filter → intent_classifier → scene_selector →
@@ -376,6 +376,9 @@ def _run_fast_pipeline(article, caption_prefix=""):
         for p in captions:
             captions[p] = caption_prefix + captions[p]
 
+    # Instagram only for massive trending stories (score >= 80) — daily limit conservation
+    post_instagram = score >= 80
+
     posted = []
     conn   = init_db()
     try:
@@ -384,7 +387,7 @@ def _run_fast_pipeline(article, caption_prefix=""):
                 mark_posted(conn, article["hash"], article["title"], "facebook")
                 posted.append("facebook")
 
-        if "instagram" in platform_images:
+        if "instagram" in platform_images and post_instagram:
             if post_to_instagram(captions["instagram"], platform_images["instagram"]):
                 mark_posted(conn, article["hash"], article["title"], "instagram")
                 posted.append("instagram")
@@ -498,7 +501,7 @@ def run():
                 break
 
             logger.info(f"  → posting UPDATE (sim match, {elapsed:.0f} min since last)")
-            posted = _run_fast_pipeline(article, caption_prefix="🔄 UPDATE: ")
+            posted = _run_fast_pipeline(article, caption_prefix="🔄 UPDATE: ", score=score)
             if posted:
                 matched_story["update_count"]   = matched_story.get("update_count", 0) + 1
                 matched_story["last_update_at"] = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
@@ -519,7 +522,7 @@ def run():
             break
 
         logger.info(f"  → BREAKING (score={score}) — running fast pipeline")
-        posted = _run_fast_pipeline(article)
+        posted = _run_fast_pipeline(article, score=score)
         if not posted:
             from publisher import send_error_email
             send_error_email(

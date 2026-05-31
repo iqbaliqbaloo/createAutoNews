@@ -383,7 +383,9 @@ def _notify_sports_admin(match, posted, event_type):
 
 # ── Post helper ───────────────────────────────────────────────────────────
 
-def _post_sports_update(match, captions, headline_text, league):
+INSTAGRAM_SPORT_EVENTS = {"RESULT", "FULL_TIME", "CENTURY"}
+
+def _post_sports_update(match, captions, headline_text, league, event_type="UPDATE"):
     from pixabay_searcher  import search_with_clip_validation
     from image_composer    import save_platform_images, TAG_COLORS
     from publisher         import post_to_facebook, post_to_instagram, post_to_telegram
@@ -413,12 +415,15 @@ def _post_sports_update(match, captions, headline_text, league):
         image_path=best_image_path,
     )
 
+    # Instagram only for key moments (result/final score/century) — daily limit conservation
+    post_instagram = event_type in INSTAGRAM_SPORT_EVENTS
+
     posted = []
     if "facebook" in platform_images:
         if post_to_facebook(captions["facebook"], platform_images["facebook"]):
             posted.append("facebook")
 
-    if "instagram" in platform_images:
+    if "instagram" in platform_images and post_instagram:
         if post_to_instagram(captions["instagram"], platform_images["instagram"]):
             posted.append("instagram")
 
@@ -479,7 +484,7 @@ def _process_cricket(match):
     league      = match.get("league", "CRICKET")
 
     logger.info(f"  Posting cricket {event_type} for {match['id']}")
-    posted = _post_sports_update(match, captions, headline, league)
+    posted = _post_sports_update(match, captions, headline, league, event_type=event_type)
 
     if posted:
         now_ts = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
@@ -535,7 +540,7 @@ def _process_football(match):
     league       = match.get("league", "FOOTBALL")
 
     logger.info(f"  Posting football {event_type} for {match['id']}")
-    posted = _post_sports_update(match, captions, headline, league)
+    posted = _post_sports_update(match, captions, headline, league, event_type=event_type)
 
     if posted:
         now_ts = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
@@ -572,7 +577,7 @@ def _process_generic_sport(match):
     headline = f"{team1} vs {team2} | {sport}"
 
     logger.info(f"  Posting {sport} update for {match['id']}")
-    posted = _post_sports_update(match, captions, headline, sport)
+    posted = _post_sports_update(match, captions, headline, sport, event_type=event_type)
 
     if posted:
         now_ts = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
