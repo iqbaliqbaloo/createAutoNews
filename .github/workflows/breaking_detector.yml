@@ -1,13 +1,13 @@
-name: Breaking News Detector
+﻿name: Breaking News Detector
 
-# Runs every 2 hours.
-# Phase 1 (always): lightweight keyword pre-check (~1 min billed, no ML).
-# Phase 2 (only when breaking signal found): full ML pipeline (~4-5 min).
-# Budget: ~360 typical runs/month × 1 min + ~18 heavy runs × 5 min ≈ 450 min/month.
+# Runs every 30 minutes - only current news (< 45 min old) is considered.
+# Phase 1 (lightweight, always): keyword pre-check only - no ML.
+# Phase 2 (full ML, conditional): runs only when Phase 1 finds a breaking signal.
+# Budget: ~1440 light runs/month x 1 min + ~30 heavy runs x 5 min = ~1590 min/month.
 
 on:
   schedule:
-    - cron: '0 */2 * * *'   # every 2 hours
+    - cron: '*/30 * * * *'   # every 30 minutes
   workflow_dispatch:
 
 jobs:
@@ -28,7 +28,7 @@ jobs:
         with:
           python-version: '3.11'
 
-      # ── Restore pipeline state (needed for breaking_state.json) ──────────
+      # â”€â”€ Restore pipeline state (needed for breaking_state.json) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
       - name: Restore pipeline state
         uses: actions/cache@v4
         with:
@@ -40,7 +40,7 @@ jobs:
       - name: Create data directory
         run: mkdir -p data
 
-      # ── Phase 1: lightweight pre-check (feedparser + requests only) ──────
+      # â”€â”€ Phase 1: lightweight pre-check (feedparser + requests only) â”€â”€â”€â”€â”€â”€
       - name: Install light dependencies
         run: pip install -r requirements_light.txt
 
@@ -50,7 +50,7 @@ jobs:
           result=$(python breaking_detector.py --check-only 2>/dev/null | tail -1)
           echo "has_breaking=${result:-false}" >> "$GITHUB_OUTPUT"
 
-      # ── Phase 2: full pipeline — only runs when breaking signal found ─────
+      # â”€â”€ Phase 2: full pipeline â€” only runs when breaking signal found â”€â”€â”€â”€â”€
       - name: Cache ML models
         if: steps.precheck.outputs.has_breaking == 'true'
         uses: actions/cache@v4
@@ -97,7 +97,7 @@ jobs:
           TELEGRAM_CHANNEL_ID:    ${{ secrets.TELEGRAM_CHANNEL_ID }}
           TZ: Asia/Karachi
 
-      # ── Persist state (always, to keep breaking_state.json current) ───────
+      # â”€â”€ Persist state (always, to keep breaking_state.json current) â”€â”€â”€â”€â”€â”€â”€
       - name: Save database
         if: steps.precheck.outputs.has_breaking == 'true'
         uses: actions/cache/save@v4
@@ -113,7 +113,7 @@ jobs:
           key: pipeline-state-${{ github.run_id }}
         continue-on-error: true
 
-      # ── Email on workflow failure ─────────────────────────────────────────
+      # â”€â”€ Email on workflow failure â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
       - name: Email on failure
         if: failure()
         run: |
@@ -132,7 +132,7 @@ jobs:
               "Action needed: Check GitHub Actions logs at:\n"
               "https://github.com/iqbaliqbaloo/NewAutomation/actions"
           )
-          msg["Subject"] = "⚠️ [VisionaryMinds] Breaking News Detector FAILED"
+          msg["Subject"] = "âš ï¸ [VisionaryMinds] Breaking News Detector FAILED"
           msg["From"] = u
           msg["To"] = t
           try:

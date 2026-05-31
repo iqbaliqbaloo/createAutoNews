@@ -232,10 +232,8 @@ def _breaking_score(article, story_clusters=None, source_counts=None):
                 score += 20
             elif age_min < 30:
                 score += 15
-            elif age_min < 60:
+            elif age_min < 45:
                 score += 10
-            elif age_min < 120:
-                score += 5
         except Exception:
             pass
 
@@ -462,8 +460,8 @@ def run():
 
     threshold = NIGHT_SCORE if _is_night() else SCORE_POST
 
-    articles = _fetch_recent(max_age_minutes=120)
-    logger.info(f"Fetched {len(articles)} recent articles (< 120 min)")
+    articles = _fetch_recent(max_age_minutes=45)
+    logger.info(f"Fetched {len(articles)} recent articles (< 45 min)")
 
     if not articles:
         logger.info("No recent articles — exiting")
@@ -583,7 +581,7 @@ def check_only():
     """
     state     = _load_state()
     threshold = NIGHT_SCORE if _is_night() else SCORE_POST
-    articles  = _fetch_recent(max_age_minutes=120)
+    articles  = _fetch_recent(max_age_minutes=45)
 
     story_clusters = _build_story_clusters(articles)
 

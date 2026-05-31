@@ -1,13 +1,13 @@
-name: Sports Tracker
+﻿name: Sports Tracker
 
-# Runs every 2 hours.
-# Exits in < 5 seconds (1 min billed) when no active match in sports_state.json.
+# Runs every 30 minutes - only current/live matches and news < 2 hours old.
+# Exits in < 5 seconds (1 min billed) when no active match found.
 # Only installs heavy deps and runs full pipeline when a LIVE match exists.
-# Budget: ~356 fast exits × 1 min + ~4 live runs × 4 min ≈ 372 min/month.
+# Budget: ~1440 fast exits x 1 min + ~10 live runs x 4 min = ~1480 min/month.
 
 on:
   schedule:
-    - cron: '0 */2 * * *'   # every 2 hours
+    - cron: '*/30 * * * *'   # every 30 minutes
   workflow_dispatch:
 
 jobs:
@@ -28,7 +28,7 @@ jobs:
         with:
           python-version: '3.11'
 
-      # ── Restore pipeline state (needed for sports_state.json) ────────────
+      # â”€â”€ Restore pipeline state (needed for sports_state.json) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
       - name: Restore pipeline state
         uses: actions/cache@v4
         with:
@@ -40,7 +40,7 @@ jobs:
       - name: Create data directory
         run: mkdir -p data
 
-      # ── Phase 1: check active matches OR discover ANY sport via "vs" pattern ─
+      # â”€â”€ Phase 1: check active matches OR discover ANY sport via "vs" pattern â”€
       - name: Install light dependencies
         run: pip install feedparser requests
 
@@ -50,7 +50,7 @@ jobs:
           python - <<'EOF' >> "$GITHUB_OUTPUT"
           import json, os, re, requests, feedparser
 
-          # Generic "X vs Y" pattern — works for cricket, football, tennis, F1, etc.
+          # Generic "X vs Y" pattern â€” works for cricket, football, tennis, F1, etc.
           VS_PATTERN = re.compile(
               r'([A-Za-z][A-Za-z .]{2,28}?)\s+(?:vs?\.?|versus)\s+([A-Za-z][A-Za-z .]{2,28})',
               re.IGNORECASE,
@@ -100,7 +100,7 @@ jobs:
           print(f"has_match={'true' if has else 'false'}")
           EOF
 
-      # ── Phase 2: full pipeline — only runs when a match is active ─────────
+      # â”€â”€ Phase 2: full pipeline â€” only runs when a match is active â”€â”€â”€â”€â”€â”€â”€â”€â”€
       - name: Cache ML models
         if: steps.matchcheck.outputs.has_match == 'true'
         uses: actions/cache@v4
@@ -160,7 +160,7 @@ jobs:
           key: pipeline-state-${{ github.run_id }}
         continue-on-error: true
 
-      # ── Email on workflow failure ─────────────────────────────────────────
+      # â”€â”€ Email on workflow failure â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
       - name: Email on failure
         if: failure()
         run: |
@@ -178,7 +178,7 @@ jobs:
               "Action needed: Check GitHub Actions logs at:\n"
               "https://github.com/iqbaliqbaloo/NewAutomation/actions"
           )
-          msg["Subject"] = "⚠️ [VisionaryMinds] Sports Tracker FAILED"
+          msg["Subject"] = "âš ï¸ [VisionaryMinds] Sports Tracker FAILED"
           msg["From"] = u
           msg["To"] = t
           try:
