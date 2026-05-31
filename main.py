@@ -201,6 +201,8 @@ def run_pipeline():
         _sep()
         print("[STEP 9] IMAGE COMPOSITION (per platform)")
         _sep()
+        captions       = intent_result["captions"]
+        image_headline = (captions.get("image_headline") or article["title"]).strip()
         source_display = article.get("domain", "Unknown")
         published_at   = article.get("published_at")
 
@@ -217,11 +219,6 @@ def run_pipeline():
         if not platform_images:
             print("Image composition failed for all platforms — aborting.")
             return
-
-        # ── STEP 10: CAPTIONS (generated in Step 5, retrieved here) ───────
-        captions = intent_result["captions"]
-        # Short image overlay headline from LLM (falls back to article title)
-        image_headline = (captions.get("image_headline") or article["title"]).strip()
 
         # ── STEP 11: SCHEDULER QUEUE ───────────────────────────────────────
         _sep()

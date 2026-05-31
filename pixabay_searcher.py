@@ -246,7 +246,8 @@ def _search_pexels(keywords):
                 timeout=12,
             )
             photos = r.json().get("photos", [])
-            urls = [p["src"]["large2x"] or p["src"]["large"] for p in photos if p.get("src")]
+            urls = [u for p in photos if p.get("src")
+                    for u in [p["src"].get("large2x") or p["src"].get("large")] if u]
             if urls:
                 return urls[:PIXABAY_RESULTS_PER_CALL]
         except Exception as e:
@@ -423,5 +424,5 @@ def search_with_clip_validation(intent_result, article=None):
             best_url   = ""
             best_score = 0.0
 
-    print(f"  Best available: CLIP={best_score:.3f} retries={MAX_RETRY_LOOPS} path={'ok' if best_path else 'NONE'}")
-    return best_url, best_score, MAX_RETRY_LOOPS, best_path
+    print(f"  Best available: CLIP={best_score:.3f} retries={loop} path={'ok' if best_path else 'NONE'}")
+    return best_url, best_score, loop, best_path
