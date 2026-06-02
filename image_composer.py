@@ -10,6 +10,7 @@ from PIL import Image, ImageDraw, ImageFont, ImageEnhance
 logger = logging.getLogger(__name__)
 
 BRAND_NAME = "VisionaryMinds"
+LOGO_PATH  = os.path.join(os.path.dirname(__file__), "logo.png")
 DARK_NAVY  = (8, 12, 24)
 
 # ── Intent badge colours ───────────────────────────────────────────────────
@@ -257,21 +258,29 @@ def compose_image(image_url, platform, intent, headline, source_name,
     photo   = Image.alpha_composite(base, overlay).convert("RGB")
     draw    = ImageDraw.Draw(photo)
 
-    # 3. White logo box — top-left (Al Jazeera style) ─────────────────────
-    logo_font = _load_font(cfg["logo_fs"], bold=True)
-    ltb       = draw.textbbox((0, 0), BRAND_NAME, font=logo_font)
-    ltext_w   = ltb[2] - ltb[0]
-    ltext_h   = ltb[3] - ltb[1]
-    lpx, lpy  = cfg["logo_pad_x"], cfg["logo_pad_y"]
-    box_w     = ltext_w + lpx * 2
-    box_h     = ltext_h + lpy * 2
-    lx, ly    = 20, 20
-
-    draw.rectangle([lx, ly, lx + box_w, ly + box_h], fill=(255, 255, 255))
-    draw.text(
-        (lx + lpx - ltb[0], ly + lpy - ltb[1]),
-        BRAND_NAME, font=logo_font, fill=(0, 0, 0),
-    )
+    # 3. Logo image — top-left ─────────────────────────────────────────────
+    logo_target_h = int(H * 0.07)   # ~7% of canvas height
+    lx, ly = 20, 20
+    try:
+        logo = Image.open(LOGO_PATH).convert("RGBA")
+        ratio    = logo_target_h / logo.height
+        logo_w   = int(logo.width * ratio)
+        logo     = logo.resize((logo_w, logo_target_h), Image.LANCZOS)
+        photo.paste(logo, (lx, ly), logo)
+    except Exception as e:
+        logger.warning(f"Logo load failed: {e} — falling back to text")
+        logo_font = _load_font(cfg["logo_fs"], bold=True)
+        ltb       = draw.textbbox((0, 0), BRAND_NAME, font=logo_font)
+        ltext_w   = ltb[2] - ltb[0]
+        ltext_h   = ltb[3] - ltb[1]
+        lpx, lpy  = cfg["logo_pad_x"], cfg["logo_pad_y"]
+        box_w     = ltext_w + lpx * 2
+        box_h     = ltext_h + lpy * 2
+        draw.rectangle([lx, ly, lx + box_w, ly + box_h], fill=(255, 255, 255))
+        draw.text(
+            (lx + lpx - ltb[0], ly + lpy - ltb[1]),
+            BRAND_NAME, font=logo_font, fill=(0, 0, 0),
+        )
 
     # 4. Coloured badge (category label) ─────────────────────────────────
     badge_label = BADGE_LABELS.get(intent.upper(), intent.upper().replace("_", " "))

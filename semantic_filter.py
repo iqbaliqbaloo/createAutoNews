@@ -83,7 +83,7 @@ def passes_semantic_filter(article_embedding):
     if max_blocked > 0.65:
         return False, f"blocked topic sim={max_blocked:.2f}"
 
-    if max_allowed > 0.55:
+    if max_allowed > 0.40:
         return True, f"allowed topic sim={max_allowed:.2f}"
 
     return False, f"low relevance (allowed_max={max_allowed:.2f})"

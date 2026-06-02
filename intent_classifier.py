@@ -194,7 +194,6 @@ GOAL: Easy to read, easy to share. Write in simple plain English — like a know
   ECONOMY → "📈 ECONOMY |"       DISASTER → "🚨 DISASTER ALERT |"  SPORTS → "🏆 SPORTS |"
   Then write one clear sentence about what happened. Example: "🏆 SPORTS | The match was delayed because of a sudden storm."
 - Lines 2-3: 2 short, simple sentences. Use easy words. Say who, what, where.
-- Line 4 (CTA): End with one of: "Share this so your friends know." / "Tag someone who should see this." / "Drop a reaction below."
 - Final line: 5-8 hashtags including #VisionaryMinds #BreakingNews and topic-specific tags from: {intent_tags}
 - No URLs. Max 2 emojis.
 
@@ -242,9 +241,8 @@ Brand tags always include: #VisionaryMinds #VMUpdates
             regen_prompt = (
                 f"Rewrite this Facebook caption to score higher on engagement. "
                 f"Requirements: (1) Start with a powerful non-generic hook — NOT 'BREAKING:'. "
-                f"(2) Include an explicit share CTA like 'Share this so your friends know.' "
-                f"(3) Keep it under 80 words before hashtags. "
-                f"(4) Keep the same hashtags. Return ONLY the improved caption text.\n\n"
+                f"(2) Keep it under 80 words before hashtags. "
+                f"(3) Keep the same hashtags. Return ONLY the improved caption text.\n\n"
                 f"Original caption:\n{fb_caption}"
             )
             improved = _groq_plain_call(regen_prompt)
@@ -318,7 +316,6 @@ def _fallback_result(article):
             "facebook": (
                 f"{hook}\n\n"
                 f"{title}\n\n"
-                f"Share this so your friends are informed.\n\n"
                 f"#BreakingNews #WorldNews #CurrentAffairs #MustRead #VisionaryMinds #VMUpdates"
             ),
             "instagram": (
