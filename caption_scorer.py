@@ -8,7 +8,7 @@ Also trims Facebook captions that are too long (> 80 words lose reach
 because Facebook collapses them behind "See More" before the CTA).
 """
 
-import re
+import re as _re
 
 _EMOTIONAL = {
     "shocking", "devastating", "urgent", "critical", "historic", "massive",
@@ -42,12 +42,16 @@ def score_caption(caption: str) -> int:
     if not any(g in first for g in _GENERIC_HOOKS):
         score += 20
 
-    # CTA present
-    if any(c in text for c in _CTA_PATTERNS):
+    # CTA present — use word-boundary matching to avoid false positives
+    # (e.g. "react" inside "reaction", "tag" inside "pentagon")
+    if any(
+        _re.search(rf"\b{_re.escape(c)}\b", text)
+        for c in _CTA_PATTERNS
+    ):
         score += 25
 
     # Emotional / high-arousal words
-    word_set = set(re.findall(r'\b\w+\b', text))
+    word_set = set(_re.findall(r'\b\w+\b', text))
     if word_set & _EMOTIONAL:
         score += 20
 
@@ -60,7 +64,7 @@ def score_caption(caption: str) -> int:
     # > 80 words: no length bonus (CTA might be hidden)
 
     # Numbers signal concrete facts
-    if re.search(r'\b\d+\b', caption):
+    if _re.search(r'\b\d+\b', caption):
         score += 10
 
     # Hashtags present

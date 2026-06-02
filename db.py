@@ -1,10 +1,10 @@
 import sqlite3
 from sklearn.metrics.pairwise import cosine_similarity
-from sentence_transformers import SentenceTransformer
 from datetime import datetime, timezone, timedelta
 
-# ─── LOAD MODEL SAFELY ─────────────────────────────
-model = SentenceTransformer("all-MiniLM-L6-v2")
+# Reuse the MiniLM model already loaded by deduplicator — avoids a second
+# 100–300 MB load when both modules are imported in the same process.
+from deduplicator import model
 
 # Cache of (old_titles, embeddings) — populated once per process so
 # title_already_posted() doesn't re-encode 200 titles on every call.

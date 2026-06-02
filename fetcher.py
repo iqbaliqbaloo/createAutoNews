@@ -2,23 +2,37 @@ import feedparser
 import hashlib
 import re
 import requests
+from fake_news_filter import _strip_prefixes
 from html import unescape
 from datetime import datetime, timedelta, timezone
 from urllib.parse import urlparse
-
+DOMAIN_PRIORITY = {
+    "reuters.com": 1.0,
+    "reutersagency.com": 1.0,   # feeds.reuters.com / reutersagency.com
+    "bbc.com": 1.0,
+    "bbci.co.uk": 1.0,          # feeds.bbci.co.uk strips to bbci.co.uk
+    "aljazeera.com": 0.92,
+    "dawn.com": 0.88,
+    "theguardian.com": 0.92,
+    "france24.com": 0.90,
+    "dw.com": 0.92,
+    "npr.org": 0.92,
+    "geo.tv": 0.82,
+    "arynews.tv": 0.80,
+}
 PAKISTAN_SOURCES = [
     "https://www.geo.tv/rss/1/0",
     "https://arynews.tv/feed/",
     "https://www.dawn.com/feeds/home",
     "https://www.thenews.com.pk/rss/1/1",
-    "https://www.samaa.tv/feed/",
-    "https://tribune.com.pk/feed",
+    "https://www.samaa.tv/feed",
+    "https://tribune.com.pk/feed/",
     "https://www.bbc.com/urdu/index.xml",
 ]
 
 WORLD_SOURCES = [
-    "https://feeds.reuters.com/reuters/worldNews",
-    "https://feeds.reuters.com/reuters/topNews",
+    "https://www.reutersagency.com/feed/",
+    "https://www.reutersagency.com/feed/?taxonomy=best-topics&post_type=best",
     "https://feeds.bbci.co.uk/news/world/rss.xml",
     "https://feeds.bbci.co.uk/news/rss.xml",
     "https://www.aljazeera.com/xml/rss/all.xml",
@@ -26,7 +40,7 @@ WORLD_SOURCES = [
     "https://www.theguardian.com/world/rss",
     "https://www.theguardian.com/international/rss",
     "https://www.independent.co.uk/news/world/rss",
-    "https://rss.dw.com/rss/en-all",
+    "https://rss.dw.com/atom/en-all",
     "https://feeds.skynews.com/feeds/rss/world.xml",
     "https://feeds.npr.org/1001/rss.xml",
     "https://www.smh.com.au/rss/world.xml",
@@ -48,12 +62,12 @@ def clean_text(text):
 
 def is_fresh(entry, hours=8):
     if not hasattr(entry, "published_parsed") or not entry.published_parsed:
-        return False
+        return True
     try:
         published = datetime(*entry.published_parsed[:6], tzinfo=timezone.utc)
         return (datetime.now(timezone.utc) - published) <= timedelta(hours=hours)
-    except:
-        return False
+    except Exception:
+        return True
 
 
 # ---------------- FETCH FEED ---------------- #
@@ -100,7 +114,8 @@ def fetch_articles():
         if not feed:
             return
 
-        domain = urlparse(url).netloc
+        
+        domain = _strip_prefixes(urlparse(url).netloc.lower())
         count  = 0
 
         for entry in feed.entries:
@@ -116,7 +131,7 @@ def fetch_articles():
             title = clean_text(getattr(entry, "title", "") or "")
             if not title:
                 continue
-            summary = clean_text(entry.get("summary", title))
+            summary = clean_text(getattr(entry, "summary", None) or title)
 
             published_at = None
             if hasattr(entry, "published_parsed") and entry.published_parsed:
@@ -152,4 +167,8 @@ def fetch_articles():
         process(u, "world")
 
     print(f"\nTotal fetched: {len(articles)} articles")
+    articles.sort(key=lambda a: (
+       0 if a["source_type"] == "world" else 1,
+       -DOMAIN_PRIORITY.get(a["domain"], 0.5)
+    ), reverse=False)
     return articles

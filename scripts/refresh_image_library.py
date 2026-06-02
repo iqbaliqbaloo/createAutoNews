@@ -12,13 +12,13 @@ PIXABAY_API_KEY = os.getenv("PIXABAY_API_KEY", "")
 LIBRARY_ROOT = os.path.join(os.path.dirname(__file__), "..", "image_library")
 
 INTENT_KEYWORDS = {
-    "WAR":      ["battlefield military", "soldiers troops", "war conflict"],
-    "POLITICS": ["parliament building", "press conference podium", "government summit"],
-    "ECONOMY":  ["stock market trading", "financial charts", "banking finance"],
-    "DISASTER": ["flood emergency rescue", "earthquake destruction", "natural disaster"],
-    "SPORTS":   ["stadium crowd match", "sports competition athlete", "trophy ceremony"],
-    "CRICKET":  ["cricket match stadium", "cricket bat ball", "cricket players"],
-    "FOOTBALL": ["football match crowd", "soccer goal celebration", "football stadium"],
+    "WAR":            ["battlefield military", "soldiers troops", "war conflict"],
+    "POLITICS":       ["parliament building", "press conference podium", "government summit"],
+    "ECONOMY":        ["stock market trading", "financial charts", "banking finance"],
+    "DISASTER":       ["flood emergency rescue", "earthquake destruction", "natural disaster"],
+    "SPORTS":         ["stadium crowd match", "sports competition athlete", "trophy ceremony"],
+    "SPORTS_CRICKET": ["cricket match stadium", "cricket bat ball", "cricket players"],
+    "SPORTS_FOOTBALL":["football match crowd", "soccer goal celebration", "football stadium"],
 }
 
 

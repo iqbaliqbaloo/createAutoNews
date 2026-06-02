@@ -1,8 +1,9 @@
 import os
 import requests
 
-token = os.environ.get("FB_PAGE_TOKEN")
+token   = os.environ.get("FB_PAGE_TOKEN")
 page_id = os.environ.get("FB_PAGE_ID")
+dry_run = os.environ.get("DRY_RUN", "").lower() in ("1", "true", "yes")
 
 
 # ─── SAFE CHECKS ─────────────────────────────
@@ -15,6 +16,9 @@ if not token or not page_id:
 print("Token loaded: YES")
 print("Token preview:", token[:10] + "...")
 
+if dry_run:
+    print("DRY_RUN=true — skipping actual API call")
+    exit(0)
 
 # ─── REQUEST ────────────────────────────────
 

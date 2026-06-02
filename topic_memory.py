@@ -33,15 +33,26 @@ def _load():
 
 def _save(memory):
     DATA_DIR.mkdir(exist_ok=True)
-    with open(MEMORY_FILE, "w") as f:
-        json.dump(memory, f, indent=2)
+    tmp = MEMORY_FILE.with_suffix(".tmp")
+    try:
+        with open(tmp, "w") as f:
+            json.dump(memory, f, indent=2)
+        tmp.replace(MEMORY_FILE)
+    except Exception as e:
+        logger.warning(f"Topic memory save failed: {e}")
+        try:
+            tmp.unlink()
+        except Exception:
+            pass
 
 
 # ── Public API ─────────────────────────────────────────────────────────────
 
-def is_on_cooldown(intent):
+def is_on_cooldown(intent, memory=None):
     """True if this intent was posted less than 2 hours ago."""
-    last = _load().get(intent)
+    if memory is None:
+        memory = _load()
+    last = memory.get(intent)
     if not last:
         return False
     try:
@@ -51,9 +62,11 @@ def is_on_cooldown(intent):
         return False
 
 
-def cooldown_remaining(intent):
+def cooldown_remaining(intent, memory=None):
     """Seconds remaining until cooldown expires (0 if not on cooldown)."""
-    last = _load().get(intent)
+    if memory is None:
+        memory = _load()
+    last = memory.get(intent)
     if not last:
         return 0
     try:
@@ -65,9 +78,10 @@ def cooldown_remaining(intent):
         return 0
 
 
-def get_last_posted_intent():
+def get_last_posted_intent(memory=None):
     """Return the intent that was most recently posted (or None)."""
-    memory = _load()
+    if memory is None:
+       memory = _load()
     last_intent = None
     last_ts     = None
     for intent, ts in memory.items():
@@ -89,19 +103,25 @@ def get_best_intent(articles_with_intents):
     is NOT on cooldown AND is not the same as the last posted intent.
     Falls back gracefully if all options are suboptimal.
     """
-    last_intent = get_last_posted_intent()
+    memory = _load()
+    last_intent = get_last_posted_intent(memory)
+
 
     # First pass: not on cooldown AND not a consecutive repeat
     for article, intent_result in articles_with_intents:
-        primary = intent_result["intent"]["primary"]
-        if not is_on_cooldown(primary) and primary != last_intent:
+        primary = intent_result.get("intent", {}).get("primary")
+        if not primary:
+            continue
+        if not is_on_cooldown(primary, memory) and primary != last_intent:
             logger.info(f"Topic memory: {primary} selected (diverse, off cooldown)")
             return article, intent_result
 
     # Second pass: not on cooldown (allow repeat if no diverse option)
     for article, intent_result in articles_with_intents:
-        primary = intent_result["intent"]["primary"]
-        if not is_on_cooldown(primary):
+        primary = intent_result.get("intent", {}).get("primary")
+        if not primary:
+            continue
+        if not is_on_cooldown(primary, memory):
             logger.info(f"Topic memory: {primary} selected (off cooldown, repeat allowed)")
             return article, intent_result
 
@@ -109,7 +129,9 @@ def get_best_intent(articles_with_intents):
     logger.info("All intents on cooldown — picking lowest remaining")
     return min(
         articles_with_intents,
-        key=lambda pair: cooldown_remaining(pair[1]["intent"]["primary"]),
+        key=lambda pair: cooldown_remaining(
+            pair[1].get("intent", {}).get("primary", ""), memory
+        ),
     )
 
 

@@ -21,7 +21,7 @@ DATA_DIR  = Path(__file__).parent / "data"
 QUEUE_FILE = DATA_DIR / "queue.json"
 
 COOLDOWNS = {
-    "facebook":  timedelta(minutes=5),
+    "facebook":  timedelta(minutes=30),
     "instagram": timedelta(minutes=45),
     "telegram":  timedelta(minutes=20),
 }
@@ -44,8 +44,17 @@ def _load():
 
 def _save(data):
     DATA_DIR.mkdir(exist_ok=True)
-    with open(QUEUE_FILE, "w") as f:
-        json.dump(data, f, indent=2)
+    tmp = QUEUE_FILE.with_suffix(".tmp")
+    try:
+        with open(tmp, "w") as f:
+            json.dump(data, f, indent=2)
+        tmp.replace(QUEUE_FILE)
+    except Exception as e:
+        logger.warning(f"Queue save failed: {e}")
+        try:
+            tmp.unlink()
+        except Exception:
+            pass
 
 
 # ── Helpers ────────────────────────────────────────────────────────────────

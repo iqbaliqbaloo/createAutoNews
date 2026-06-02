@@ -24,8 +24,7 @@ from fake_news_filter import score_article as fake_news_score
 from deduplicator import deduplicate            # loads all-MiniLM-L6-v2
 from semantic_filter import embed_article, passes_semantic_filter
 
-# ── Steps 5 & 10: Intent + captions (loads CLIP via generator import) ─────
-from generator import clip_score               # loads clip-ViT-B-32
+# ── Steps 5 & 10: Intent + captions ──────────────────────────────────────
 from intent_classifier import classify_and_generate
 from virality_scorer import rank_by_virality
 
@@ -46,17 +45,16 @@ from scheduler_queue import (
 )
 
 # ── Step 12: Post + log ───────────────────────────────────────────────────
-from publisher import post_to_facebook, post_to_instagram, post_to_telegram
+from publisher import post_to_facebook, post_to_instagram, post_to_telegram, send_error_email
 from results_logger import log_result, best_hours
 from trend_detector import trending_context_string
 
 # ── Config ────────────────────────────────────────────────────────────────
 PKT            = pytz.timezone("Asia/Karachi")
-FB_DAILY_LIMIT = 50
-
+FB_DAILY_LIMIT = 10
 IG_DAILY_LIMIT = 45
 TG_DAILY_LIMIT = 30
-ARTICLE_CAP    = 30   # hard cap per run (Step 1)
+ARTICLE_CAP    = 100   # hard cap per run (Step 1)
 CLASSIFY_TOP   = 10   # classify top-N fresh articles for intent selection
 
 
@@ -159,7 +157,10 @@ def run_pipeline():
 
         # ── VIRALITY RANKING ───────────────────────────────────────────────
         fresh = rank_by_virality(fresh)
-        print(f"  Top virality: {[(a['title'][:40], a['virality_score']) for a in fresh[:3]]}")
+        if fresh and "virality_score" not in fresh[0]:
+            print("  WARNING: virality_score key missing — rank_by_virality may have failed")
+        else:
+            print(f"  Top virality: {[(a['title'][:40], a.get('virality_score', 'n/a')) for a in fresh[:3]]}")
 
         # ── STEP 5: INTENT CLASSIFICATION + CAPTION GENERATION ────────────
         _sep()
@@ -231,19 +232,35 @@ def run_pipeline():
         print("[STEP 11] SCHEDULER QUEUE")
         _sep()
         platforms_ready = get_platforms_ready()
+
+        # Apply daily limit filters before checking cooldowns
+        if fb_count >= FB_DAILY_LIMIT:
+            platforms_ready = [p for p in platforms_ready if p != "facebook"]
+        if ig_count >= IG_DAILY_LIMIT:
+            platforms_ready = [p for p in platforms_ready if p != "instagram"]
+        if tg_count >= TG_DAILY_LIMIT:
+            platforms_ready = [p for p in platforms_ready if p != "telegram"]
+
         print(f"Platforms ready: {platforms_ready}")
 
         if not platforms_ready:
-            # If cooldowns expire within 10 minutes, wait rather than discard this run.
+            # If cooldowns expire within 20 minutes, wait rather than discard this run.
             now_utc = datetime.now(timezone.utc)
             max_wait = max(
                 max(0, (next_available(p) - now_utc).total_seconds())
-                for p in ["facebook", "instagram"]
+                for p in ["facebook", "instagram", "telegram"]
             )
             if max_wait <= 1200:   # wait up to 20 min; GH Actions timeout is 35 min
                 print(f"  Cooldowns expire in {int(max_wait)}s — waiting...")
                 time.sleep(max_wait + 5)
                 platforms_ready = get_platforms_ready()
+                # Re-apply daily limit filters after wait
+                if fb_count >= FB_DAILY_LIMIT:
+                    platforms_ready = [p for p in platforms_ready if p != "facebook"]
+                if ig_count >= IG_DAILY_LIMIT:
+                    platforms_ready = [p for p in platforms_ready if p != "instagram"]
+                if tg_count >= TG_DAILY_LIMIT:
+                    platforms_ready = [p for p in platforms_ready if p != "telegram"]
             else:
                 print(f"  Cooldowns expire in {int(max_wait / 60)}m — queuing for next run.")
                 log_result(
@@ -255,7 +272,6 @@ def run_pipeline():
                     status="queued",
                     retry_count=retry_count,
                 )
-                # Images were composed but won't be posted — clean up now
                 for path in platform_images.values():
                     try:
                         os.unlink(path)
@@ -285,22 +301,18 @@ def run_pipeline():
             else:
                 print("  Facebook failed")
 
-        if ig_count >= IG_DAILY_LIMIT:
-            print(f"  Instagram daily limit reached ({ig_count}/{IG_DAILY_LIMIT}) — skipping")
-        elif "instagram" in platforms_ready and "instagram" in platform_images:
+        if "instagram" in platforms_ready and "instagram" in platform_images:
             ig_ok = post_to_instagram(captions["instagram"], platform_images["instagram"])
             if ig_ok:
                 queue_mark_posted("instagram")
                 mark_posted(conn, article["hash"], article["title"], "instagram")
                 ig_count += 1
                 posted_platforms.append("instagram")
-                print("  Instagram ✔")
+                print(f"  Instagram [IG {ig_count}/{IG_DAILY_LIMIT}] ✔")
             else:
                 print("  Instagram failed")
 
-        if tg_count >= TG_DAILY_LIMIT:
-            print(f"  Telegram daily limit reached ({tg_count}/{TG_DAILY_LIMIT}) — skipping")
-        elif "telegram" in platforms_ready and "telegram" in platform_images:
+        if "telegram" in platforms_ready and "telegram" in platform_images:
             tg_ok = post_to_telegram(captions["telegram"], platform_images["telegram"])
             if tg_ok:
                 queue_mark_posted("telegram")
@@ -327,7 +339,6 @@ def run_pipeline():
         )
 
         if status == "failed":
-            from publisher import send_error_email
             send_error_email(
                 "Scheduled Post FAILED — no platform posted",
                 f"The scheduled pipeline selected an article but failed to post it.\n\n"
@@ -337,18 +348,17 @@ def run_pipeline():
                 f"Check GitHub Actions logs for the full error.",
             )
 
-        # Cleanup temp image files only on success; keep on failure for artifact upload
-        if posted_platforms:
-            for path in platform_images.values():
-                try:
-                    os.unlink(path)
-                except Exception:
-                    pass
+        # Cleanup temp image files (always)
+        for path in platform_images.values():
             try:
-                if best_image_path and os.path.exists(best_image_path):
-                    os.unlink(best_image_path)
+                os.unlink(path)
             except Exception:
                 pass
+        try:
+            if best_image_path and os.path.exists(best_image_path):
+                os.unlink(best_image_path)
+        except Exception:
+            pass
 
         # ── Summary ────────────────────────────────────────────────────────
         _sep("═")

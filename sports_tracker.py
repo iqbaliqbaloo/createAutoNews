@@ -129,8 +129,17 @@ def _load_state():
 
 def _save_state(state):
     os.makedirs(DATA_DIR, exist_ok=True)
-    with open(STATE_FILE, "w") as f:
-        json.dump(state, f, indent=2)
+    tmp = STATE_FILE + ".tmp"
+    try:
+        with open(tmp, "w") as f:
+            json.dump(state, f, indent=2)
+        os.replace(tmp, STATE_FILE)
+    except Exception as e:
+        logger.warning(f"Sports state save failed: {e}")
+        try:
+            os.unlink(tmp)
+        except Exception:
+            pass
 
 
 # ── Cricket score fetching (RSS-based) ────────────────────────────────────
@@ -490,7 +499,9 @@ def _process_cricket(match):
         now_ts = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
         match["last_post_time"] = now_ts
         match["post_count"]     = match.get("post_count", 0) + 1
-        match.setdefault("post_history", []).append(now_ts)
+        history = match.setdefault("post_history", [])
+        history.append(now_ts)
+        match["post_history"] = history[-20:]
         _notify_sports_admin(match, posted, event_type)
 
     return match
@@ -546,7 +557,9 @@ def _process_football(match):
         now_ts = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
         match["last_post_time"] = now_ts
         match["post_count"]     = match.get("post_count", 0) + 1
-        match.setdefault("post_history", []).append(now_ts)
+        history = match.setdefault("post_history", [])
+        history.append(now_ts)
+        match["post_history"] = history[-20:]
         _notify_sports_admin(match, posted, event_type)
 
     return match
@@ -583,7 +596,9 @@ def _process_generic_sport(match):
         now_ts = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
         match["last_post_time"] = now_ts
         match["post_count"]     = match.get("post_count", 0) + 1
-        match.setdefault("post_history", []).append(now_ts)
+        history = match.setdefault("post_history", [])
+        history.append(now_ts)
+        match["post_history"] = history[-20:]
         match["state"] = "RESULT"   # no live API → one post per discovery
         _notify_sports_admin(match, posted, "MATCH DETECTED")
 
@@ -612,7 +627,7 @@ def _discover_matches(state):
         (b) the same matchup appears in 2+ articles (trending velocity)
 
     Adds discovered matches to state["active_matches"].
-    Only considers articles published within the last 6 hours.
+    Only considers articles published within the last 2 hours.
     """
     from collections import Counter
 

@@ -28,14 +28,14 @@ jobs:
         with:
           python-version: '3.11'
 
-      # â”€â”€ Restore pipeline state (needed for sports_state.json) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+      # ── Restore pipeline state (needed for sports_state.json) ────────────
       - name: Restore pipeline state
         uses: actions/cache@v4
         with:
           path: data/
-          key: pipeline-state-${{ github.run_id }}
+          key: sports-state-${{ github.run_id }}
           restore-keys: |
-            pipeline-state-
+            sports-state-
 
       - name: Create data directory
         run: mkdir -p data
@@ -113,9 +113,9 @@ jobs:
         uses: actions/cache@v4
         with:
           path: state.db
-          key: state-db-${{ github.run_id }}
+          key: sports-db-${{ github.run_id }}
           restore-keys: |
-            state-db-
+            sports-db-
 
       - name: Install fonts
         if: steps.matchcheck.outputs.has_match == 'true'
@@ -150,14 +150,14 @@ jobs:
         uses: actions/cache/save@v4
         with:
           path: state.db
-          key: state-db-${{ github.run_id }}
+          key: sports-db-${{ github.run_id }}
         continue-on-error: true
 
       - name: Save pipeline state
         uses: actions/cache/save@v4
         with:
           path: data/
-          key: pipeline-state-${{ github.run_id }}
+          key: sports-state-${{ github.run_id }}
         continue-on-error: true
 
       # â”€â”€ Email on workflow failure â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
@@ -178,7 +178,7 @@ jobs:
               "Action needed: Check GitHub Actions logs at:\n"
               "https://github.com/iqbaliqbaloo/NewAutomation/actions"
           )
-          msg["Subject"] = "âš ï¸ [VisionaryMinds] Sports Tracker FAILED"
+          msg["Subject"] = "⚠️ [VisionaryMinds] Sports Tracker FAILED"
           msg["From"] = u
           msg["To"] = t
           try:

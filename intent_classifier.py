@@ -1,6 +1,7 @@
 import json
 import logging
 import os
+import random
 
 logger = logging.getLogger(__name__)
 
@@ -66,6 +67,28 @@ _VIRAL_HOOKS = {
 }
 
 
+# ── Plain Groq call (no JSON system prompt) — for caption regeneration ─────
+
+def _groq_plain_call(user_prompt):
+    """Simple Groq call without JSON system prompt — for caption regeneration."""
+    from groq import Groq
+    for env_var in ("GROQ_API_KEY", "GROQ_API_KEY_2"):
+        key = os.getenv(env_var)
+        if not key:
+            continue
+        try:
+            resp = Groq(api_key=key).chat.completions.create(
+                model="llama-3.3-70b-versatile",
+                messages=[{"role": "user", "content": user_prompt}],
+                temperature=0.4,
+                max_tokens=600,
+            )
+            return resp.choices[0].message.content
+        except Exception as e:
+            logger.warning(f"{env_var} regen failed: {e}")
+    return None
+
+
 # ── Groq call with key-1 → key-2 fallback ─────────────────────────────────
 
 def _groq_call(user_prompt, groq_client=None):
@@ -123,8 +146,6 @@ def classify_and_generate(article, groq_client=None, trending_context=""):
     description = (article.get("summary", "") or article.get("description", "") or "")[:500]
     source      = article.get("domain", "Unknown")
     intent_tags = " | ".join(f"{k}: {v}" for k, v in _INTENT_HASHTAGS.items())
-
-    import random
 
     user_prompt = f"""\
 Article Title: {title}
@@ -226,7 +247,7 @@ Brand tags always include: #VisionaryMinds #VMUpdates
                 f"(4) Keep the same hashtags. Return ONLY the improved caption text.\n\n"
                 f"Original caption:\n{fb_caption}"
             )
-            improved = _groq_call(regen_prompt, groq_client)
+            improved = _groq_plain_call(regen_prompt)
             if improved and improved.strip():
                 captions["facebook"] = improved.strip()
                 logger.info(f"Caption regenerated (was {fb_score}/100)")
@@ -234,6 +255,16 @@ Brand tags always include: #VisionaryMinds #VMUpdates
         # ── Length optimisation ────────────────────────────────────────────
         if captions.get("facebook"):
             captions["facebook"] = optimize_length(captions["facebook"], max_words=80)
+        if captions.get("instagram"):
+            captions["instagram"] = optimize_length(captions["instagram"], max_words=60)
+        if captions.get("telegram"):
+            captions["telegram"] = optimize_length(captions["telegram"], max_words=120)
+
+        # ── Enforce image headline 8-word limit ───────────────────────────
+        if captions.get("image_headline"):
+            words = captions["image_headline"].split()
+            if len(words) > 8:
+                captions["image_headline"] = " ".join(words[:8])
 
         return {"intent": intent_data, "captions": captions}
 
@@ -263,9 +294,19 @@ def _normalise_intent(intent_data):
 
 
 def _fallback_result(article):
-    import random
     title = (article.get("title", "Breaking News") or "Breaking News")[:120]
-    hook  = random.choice(_VIRAL_HOOKS["POLITICS"])
+    title_lower = title.lower()
+    if any(w in title_lower for w in ["war", "attack", "bomb", "missile", "soldiers", "killed"]):
+        hook_key = "WAR"
+    elif any(w in title_lower for w in ["economy", "gdp", "inflation", "market", "trade", "imf"]):
+        hook_key = "ECONOMY"
+    elif any(w in title_lower for w in ["earthquake", "flood", "disaster", "emergency", "rescue"]):
+        hook_key = "DISASTER"
+    elif any(w in title_lower for w in ["match", "cricket", "football", "sports", "goal", "wicket"]):
+        hook_key = "SPORTS"
+    else:
+        hook_key = "POLITICS"
+    hook = random.choice(_VIRAL_HOOKS[hook_key])
     return {
         "intent": {
             "intents":   [{"label": l, "score": 0.2} for l in INTENTS],

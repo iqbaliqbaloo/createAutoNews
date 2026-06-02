@@ -28,14 +28,14 @@ jobs:
         with:
           python-version: '3.11'
 
-      # â”€â”€ Restore pipeline state (needed for breaking_state.json) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+      # ── Restore pipeline state (needed for breaking_state.json) ──────────
       - name: Restore pipeline state
         uses: actions/cache@v4
         with:
           path: data/
-          key: pipeline-state-${{ github.run_id }}
+          key: breaking-state-${{ github.run_id }}
           restore-keys: |
-            pipeline-state-
+            breaking-state-
 
       - name: Create data directory
         run: mkdir -p data
@@ -63,9 +63,9 @@ jobs:
         uses: actions/cache@v4
         with:
           path: state.db
-          key: state-db-${{ github.run_id }}
+          key: breaking-db-${{ github.run_id }}
           restore-keys: |
-            state-db-
+            breaking-db-
 
       - name: Install fonts
         if: steps.precheck.outputs.has_breaking == 'true'
@@ -83,18 +83,15 @@ jobs:
         if: steps.precheck.outputs.has_breaking == 'true'
         run: python breaking_detector.py
         env:
-          MAKE_WEBHOOK_URL:   ${{ secrets.MAKE_WEBHOOK_URL }}
-          MAKE_WEBHOOK_URL_1: ${{ secrets.MAKE_WEBHOOK_URL_1 }}
-          GROQ_API_KEY:       ${{ secrets.GROQ_API_KEY }}
-          GROQ_API_KEY_2:         ${{ secrets.GROQ_API_KEY_2 }}
-          FB_PAGE_TOKEN:          ${{ secrets.FB_PAGE_TOKEN }}
-          FB_PAGE_ID:             ${{ secrets.FB_PAGE_ID }}
-          IG_USER_ID:             ${{ secrets.IG_USER_ID }}
-          PIXABAY_API_KEY:        ${{ secrets.PIXABAY_API_KEY }}
-          PEXELS_API_KEY:         ${{ secrets.PEXELS_API_KEY }}
-          IMGBB_API_KEY:          ${{ secrets.IMGBB_API_KEY }}
-          TELEGRAM_BOT_TOKEN:     ${{ secrets.TELEGRAM_BOT_TOKEN }}
-          TELEGRAM_CHANNEL_ID:    ${{ secrets.TELEGRAM_CHANNEL_ID }}
+          MAKE_WEBHOOK_URL:    ${{ secrets.MAKE_WEBHOOK_URL }}
+          MAKE_WEBHOOK_URL_1:  ${{ secrets.MAKE_WEBHOOK_URL_1 }}
+          GROQ_API_KEY:        ${{ secrets.GROQ_API_KEY }}
+          GROQ_API_KEY_2:      ${{ secrets.GROQ_API_KEY_2 }}
+          PIXABAY_API_KEY:     ${{ secrets.PIXABAY_API_KEY }}
+          PEXELS_API_KEY:      ${{ secrets.PEXELS_API_KEY }}
+          IMGBB_API_KEY:       ${{ secrets.IMGBB_API_KEY }}
+          TELEGRAM_BOT_TOKEN:  ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHANNEL_ID: ${{ secrets.TELEGRAM_CHANNEL_ID }}
           TZ: Asia/Karachi
 
       # â”€â”€ Persist state (always, to keep breaking_state.json current) â”€â”€â”€â”€â”€â”€â”€
@@ -103,14 +100,14 @@ jobs:
         uses: actions/cache/save@v4
         with:
           path: state.db
-          key: state-db-${{ github.run_id }}
+          key: breaking-db-${{ github.run_id }}
         continue-on-error: true
 
       - name: Save pipeline state
         uses: actions/cache/save@v4
         with:
           path: data/
-          key: pipeline-state-${{ github.run_id }}
+          key: breaking-state-${{ github.run_id }}
         continue-on-error: true
 
       # â”€â”€ Email on workflow failure â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
@@ -132,7 +129,7 @@ jobs:
               "Action needed: Check GitHub Actions logs at:\n"
               "https://github.com/iqbaliqbaloo/NewAutomation/actions"
           )
-          msg["Subject"] = "âš ï¸ [VisionaryMinds] Breaking News Detector FAILED"
+          msg["Subject"] = "⚠️ [VisionaryMinds] Breaking News Detector FAILED"
           msg["From"] = u
           msg["To"] = t
           try:

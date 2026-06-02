@@ -1,10 +1,10 @@
 """
 Pipeline B — Breaking News Detector
 
-Runs every 2 hours (breaking_detector.yml).
+Runs every 30 minutes (breaking_detector.yml).
 Phase 1 (lightweight, always): keyword pre-check only — no ML.
 Phase 2 (full ML, conditional): runs only when Phase 1 finds a breaking signal.
-Scans the last 120 minutes of RSS, scores articles, and fast-posts
+Scans the last 45 minutes of RSS, scores articles, and fast-posts
 anything that hits the breaking threshold while staying safely
 within daily/hourly caps.
 """
@@ -107,8 +107,17 @@ def _load_state():
 
 def _save_state(state):
     os.makedirs(DATA_DIR, exist_ok=True)
-    with open(STATE_FILE, "w") as f:
-        json.dump(state, f, indent=2)
+    tmp = STATE_FILE + ".tmp"
+    try:
+        with open(tmp, "w") as f:
+            json.dump(state, f, indent=2)
+        os.replace(tmp, STATE_FILE)
+    except Exception as e:
+        logger.warning(f"Breaking state save failed: {e}")
+        try:
+            os.unlink(tmp)
+        except Exception:
+            pass
 
 
 # ── Fetch recent articles (< 15 min) ──────────────────────────────────────
@@ -119,6 +128,13 @@ def _fetch_recent(max_age_minutes=15):
     results = []
     seen    = set()
 
+    from urllib.parse import urlparse
+    from html import unescape
+
+    def _clean(t):
+        t = re.sub(r"<[^>]+>", "", t or "")
+        return unescape(re.sub(r"\s+", " ", t)).strip()
+
     for url in RSS_SOURCES:
         try:
             r    = requests.get(url, headers=HEADERS, timeout=10)
@@ -127,7 +143,6 @@ def _fetch_recent(max_age_minutes=15):
             logger.warning(f"Feed fetch failed {url}: {e}")
             continue
 
-        from urllib.parse import urlparse
         domain = urlparse(url).netloc
 
         for entry in feed.entries:
@@ -145,14 +160,8 @@ def _fetch_recent(max_age_minutes=15):
                 continue
             seen.add(link)
 
-            from html import unescape
-            import re
-            def clean(t):
-                t = re.sub(r"<[^>]+>", "", t or "")
-                return unescape(re.sub(r"\s+", " ", t)).strip()
-
-            title   = clean(getattr(entry, "title", ""))
-            summary = clean(entry.get("summary", title))
+            title   = _clean(getattr(entry, "title", ""))
+            summary = _clean(entry.get("summary", title))
             if not title:
                 continue
 
@@ -183,7 +192,7 @@ def _story_key(title):
     """Extract up to 4 meaningful words as a story signature."""
     words = re.findall(r'\b[a-z]{4,}\b', title.lower())
     key   = [w for w in words if w not in _STOPWORDS][:4]
-    return " ".join(sorted(key)) if len(key) >= 2 else ""
+    return " ".join(key) if len(key) >= 2 else ""
 
 
 def _build_story_clusters(articles):
@@ -282,7 +291,7 @@ def _check_posted_similarity(title, posted_today):
     """
     Returns:
       ('duplicate', story)  if similarity > 0.80
-      ('update',    story)  if 0.70 <= similarity <= 0.85 and update_count < 2
+      ('update',    story)  if 0.70 <= similarity <= 0.80 and update_count < 2
       ('new',       None)   otherwise
     """
     if not posted_today:
@@ -372,11 +381,12 @@ def _run_fast_pipeline(article, caption_prefix="", score=0):
     import pixabay_searcher as _ps
     orig_loops = _ps.MAX_RETRY_LOOPS
     _ps.MAX_RETRY_LOOPS = 1
-
-    image_url, best_clip, retry_count, best_image_path = search_with_clip_validation(
-        intent_result, article
-    )
-    _ps.MAX_RETRY_LOOPS = orig_loops
+    try:
+        image_url, best_clip, retry_count, best_image_path = search_with_clip_validation(
+            intent_result, article
+        )
+    finally:
+        _ps.MAX_RETRY_LOOPS = orig_loops
 
     captions = intent_result["captions"]
     image_headline = (captions.get("image_headline") or article["title"]).strip()
@@ -577,6 +587,7 @@ def run():
 def _write_queue(article):
     """Append a score-40–59 article to data/queue.json for the main pipeline."""
     queue_file = os.path.join(DATA_DIR, "breaking_queue.json")
+    tmp_file   = queue_file + ".tmp"
     try:
         if os.path.exists(queue_file):
             with open(queue_file) as f:
@@ -584,13 +595,18 @@ def _write_queue(article):
         else:
             q = []
         q.append({
-            "article":    article,
-            "queued_at":  datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
+            "article":   article,
+            "queued_at": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
         })
-        with open(queue_file, "w") as f:
+        with open(tmp_file, "w") as f:
             json.dump(q, f, indent=2)
+        os.replace(tmp_file, queue_file)
     except Exception as e:
         logger.warning(f"Queue write failed: {e}")
+        try:
+            os.unlink(tmp_file)
+        except Exception:
+            pass
 
 
 def check_only():

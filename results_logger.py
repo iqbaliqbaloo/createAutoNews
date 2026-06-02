@@ -68,8 +68,17 @@ def log_result(article_url, intent, clip_score, image_url,
     if len(entries) > MAX_ENTRIES:
         entries = entries[-MAX_ENTRIES:]
 
-    with open(RESULTS_FILE, "w") as f:
-        json.dump(entries, f, indent=2)
+    tmp = RESULTS_FILE.with_suffix(".tmp")
+    try:
+        with open(tmp, "w") as f:
+            json.dump(entries, f, indent=2)
+        tmp.replace(RESULTS_FILE)
+    except Exception as e:
+        logger.error(f"results.json save failed: {e}")
+        try:
+            tmp.unlink()
+        except Exception:
+            pass
 
     logger.info(f"Logged: {status} | pipeline={pipeline} | intent={intent} | platforms={platforms}")
 

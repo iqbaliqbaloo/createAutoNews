@@ -46,18 +46,18 @@ jobs:
         uses: actions/cache@v4
         with:
           path: state.db
-          key: state-db-${{ github.run_id }}
+          key: post-db-${{ github.run_id }}
           restore-keys: |
-            state-db-
+            post-db-
 
       # ── Pipeline state files (topic memory, queue, results) ─────────────
       - name: Restore pipeline state
         uses: actions/cache@v4
         with:
           path: data/
-          key: pipeline-state-${{ github.run_id }}
+          key: post-state-${{ github.run_id }}
           restore-keys: |
-            pipeline-state-
+            post-state-
 
       # ── Ensure data/ always exists so cache save never fails ────────────
       - name: Create data directory
@@ -96,14 +96,10 @@ jobs:
           TELEGRAM_CHANNEL_ID: ${{ secrets.TELEGRAM_CHANNEL_ID }}
           TZ: Asia/Karachi
 
-      # ── Notify on failure (Telegram + Email) ─────────────────────────────
+      # ── Notify on failure (Email only — Telegram alert goes to admin chat if configured) ──
       - name: Notify on pipeline failure
         if: failure()
         run: |
-          curl -s -X POST \
-            "https://api.telegram.org/bot${{ secrets.TELEGRAM_BOT_TOKEN }}/sendMessage" \
-            -d "chat_id=${{ secrets.TELEGRAM_CHANNEL_ID }}&text=⚠️ VisionaryMinds Autoposter FAILED — $(date '+%d %b %Y %H:%M UTC')" \
-            || true
           python - <<'EOF'
           import smtplib, os
           from email.mime.text import MIMEText
@@ -141,7 +137,7 @@ jobs:
         uses: actions/cache/save@v4
         with:
           path: state.db
-          key: state-db-${{ github.run_id }}
+          key: post-db-${{ github.run_id }}
         continue-on-error: true
 
       # ── Persist pipeline state ────────────────────────────────────────────
@@ -149,7 +145,7 @@ jobs:
         uses: actions/cache/save@v4
         with:
           path: data/
-          key: pipeline-state-${{ github.run_id }}
+          key: post-state-${{ github.run_id }}
         continue-on-error: true
 
       # ── Upload logs on failure ────────────────────────────────────────────

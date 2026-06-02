@@ -67,8 +67,8 @@ def embed_article(article):
 def passes_semantic_filter(article_embedding):
     """
     Returns (passes: bool, reason: str).
-    - Blocked if similarity to any blocked topic > 0.75
-    - Allowed if similarity to any allowed topic > 0.70
+    - Blocked if similarity to any blocked topic > 0.65
+    - Allowed if similarity to any allowed topic > 0.55
     - Rejected otherwise (low topic relevance)
     """
     allowed_embs, blocked_embs = _get_topic_embeddings()
@@ -80,10 +80,10 @@ def passes_semantic_filter(article_embedding):
     max_blocked = float(np.max(blocked_scores))
     max_allowed = float(np.max(allowed_scores))
 
-    if max_blocked > 0.45:
+    if max_blocked > 0.65:
         return False, f"blocked topic sim={max_blocked:.2f}"
 
-    if max_allowed > 0.25:
+    if max_allowed > 0.55:
         return True, f"allowed topic sim={max_allowed:.2f}"
 
     return False, f"low relevance (allowed_max={max_allowed:.2f})"

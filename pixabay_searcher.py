@@ -5,10 +5,9 @@ import logging
 import tempfile
 from datetime import datetime, timezone
 import requests
-from PIL import Image
-from sklearn.metrics.pairwise import cosine_similarity
 
-from generator import clip_model
+
+from generator import clip_score as _compute_clip_score
 from scene_selector import get_search_keywords, BROAD_FALLBACKS
 
 logger = logging.getLogger(__name__)
@@ -175,10 +174,7 @@ def _increment_pixabay_count():
 
 def _clip_score(image_path, scene_keywords):
     keyword_str = " ".join(scene_keywords)[:200]
-    img      = Image.open(image_path).convert("RGB")
-    text_emb = clip_model.encode([keyword_str])
-    img_emb  = clip_model.encode([img])
-    return float(cosine_similarity(text_emb, img_emb)[0][0])
+    return _compute_clip_score(keyword_str, image_path)
 
 
 # ── Pixabay search ─────────────────────────────────────────────────────────
@@ -344,6 +340,7 @@ def search_with_clip_validation(intent_result, article=None):
     best_score = 0.0
     best_path  = None
 
+    loop = 0
     for loop in range(MAX_RETRY_LOOPS + 1):
         keywords  = get_search_keywords(intent_result, article=article, retry_loop=loop)
         cache_key = f"{intent_label}_{keywords[0].replace(' ', '_')}" if keywords else f"{intent_label}_news"

@@ -5,10 +5,12 @@ from urllib.parse import urlparse
 DOMAIN_SCORES = {
     # Tier 1 — wire services & major broadcasters
     "reuters.com": 1.0,
+    "reutersagency.com": 1.0,   # feeds.reuters.com strips to reutersagency.com
     "apnews.com": 1.0,
     "afp.com": 1.0,
     "bbc.com": 1.0,
     "bbc.co.uk": 1.0,
+    "bbci.co.uk": 1.0,          # feeds.bbci.co.uk strips to bbci.co.uk
     "voanews.com": 0.95,
     "rferl.org": 0.90,
     "bloomberg.com": 0.95,
@@ -123,8 +125,10 @@ def _domain_score(url, known_domain):
 
 
 def _strip_prefixes(domain):
-    """Remove common subdomains that don't carry reputation info."""
-    return re.sub(r"^(feeds?|rss|news|www|m|mobile|amp)\.", "", domain)
+    prefixes = r"^(feeds?|rss|news|www|m|mobile|amp)\."
+    while re.match(prefixes, domain):
+        domain = re.sub(prefixes, "", domain)
+    return domain
 
 
 def _apply_clickbait_penalty(score, title):

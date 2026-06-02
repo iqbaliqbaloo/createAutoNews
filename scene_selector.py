@@ -120,7 +120,7 @@ _SKIP_WORDS = {
     "of", "with", "is", "are", "was", "were", "has", "have", "had", "be",
     "been", "this", "that", "says", "said", "report", "reports", "reported",
     "breaking", "update", "latest", "new", "may", "will", "can", "over",
-    "into", "it", "its", "as", "by", "from", "not", "after", "amid",
+    "into", "it", "its", "as", "by", "from", "not", "after",
     "sources", "officials", "government", "world", "news", "just", "amid",
     "vs", "against", "between",
 }
@@ -184,21 +184,19 @@ def get_search_keywords(intent_result, article=None, retry_loop=0):
         return out[:4]
 
     elif retry_loop == 1:
-        if not ambiguous and primary_score >= 0.50:
-            return list(tmpl_primary["primary"])
-        merged = list(tmpl_primary["primary"]) + list(tmpl_secondary["primary"])
+        return list(tmpl_primary["secondary"])
+
+    elif retry_loop == 2:
+        return list(tmpl_primary["tertiary"])
+
+    elif retry_loop == 3:
+        merged = list(tmpl_primary["tertiary"]) + list(tmpl_secondary["tertiary"])
         seen, out = set(), []
         for kw in merged:
             if kw not in seen:
                 seen.add(kw)
                 out.append(kw)
         return out[:4]
-
-    elif retry_loop == 2:
-        return list(tmpl_primary["secondary"])
-
-    elif retry_loop == 3:
-        return list(tmpl_primary["tertiary"])
 
     else:
         return list(FALLBACK_KEYWORDS.get(primary, ["news"]))
