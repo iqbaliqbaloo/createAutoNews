@@ -258,6 +258,13 @@ Brand tags always include: #VisionaryMinds #VMUpdates
         if captions.get("telegram"):
             captions["telegram"] = optimize_length(captions["telegram"], max_words=120)
 
+        # ── Guaranteed hashtag + CTA footer (never rely on LLM alone) ─────
+        primary = intent_data.get("primary", "POLITICS")
+        if captions.get("facebook"):
+            captions["facebook"] = _ensure_fb_footer(captions["facebook"], primary)
+        if captions.get("instagram"):
+            captions["instagram"] = _ensure_ig_footer(captions["instagram"], primary)
+
         # ── Enforce image headline 8-word limit ───────────────────────────
         if captions.get("image_headline"):
             words = captions["image_headline"].split()
@@ -272,6 +279,70 @@ Brand tags always include: #VisionaryMinds #VMUpdates
 
 
 # ── Helpers ────────────────────────────────────────────────────────────────
+
+_FB_FOOTER = {
+    "WAR":      "#VisionaryMinds #VMUpdates #BreakingNews #WorldNews #WarNews #GlobalCrisis",
+    "POLITICS": "#VisionaryMinds #VMUpdates #BreakingNews #WorldNews #Politics #CurrentAffairs",
+    "ECONOMY":  "#VisionaryMinds #VMUpdates #BreakingNews #WorldNews #Economy #Finance",
+    "DISASTER": "#VisionaryMinds #VMUpdates #BreakingNews #WorldNews #Disaster #EmergencyAlert",
+    "SPORTS":   "#VisionaryMinds #VMUpdates #BreakingNews #WorldNews #Sports #SportsUpdate",
+}
+
+_IG_FOOTER = {
+    "WAR":      (
+        "#VisionaryMinds #VMUpdates #BreakingNews #WorldNews #WarNews #GlobalCrisis "
+        "#Conflict #LiveUpdates #UrgentNews #MustShare #News #CurrentAffairs "
+        "#Trending #Viral #MustSee #TopStory #NewsAlert #GlobalNews #NowNews"
+    ),
+    "POLITICS": (
+        "#VisionaryMinds #VMUpdates #BreakingNews #WorldNews #Politics #GlobalPolitics "
+        "#CurrentAffairs #PoliticalNews #MustRead #TopStory #News #Trending "
+        "#Viral #MustSee #NewsAlert #GlobalNews #NowNews #InformationIsPower"
+    ),
+    "ECONOMY":  (
+        "#VisionaryMinds #VMUpdates #BreakingNews #WorldNews #Economy #Finance "
+        "#MarketNews #Inflation #EconomicCrisis #MoneyMatters #MustKnow #News "
+        "#CurrentAffairs #Trending #Viral #MustSee #TopStory #NewsAlert #NowNews"
+    ),
+    "DISASTER": (
+        "#VisionaryMinds #VMUpdates #BreakingNews #WorldNews #Disaster #NaturalDisaster "
+        "#EmergencyAlert #PrayersNeeded #HumanityFirst #UrgentNews #News #CurrentAffairs "
+        "#Trending #Viral #MustSee #TopStory #NewsAlert #GlobalNews #NowNews"
+    ),
+    "SPORTS":   (
+        "#VisionaryMinds #VMUpdates #BreakingNews #WorldNews #Sports #Cricket "
+        "#Football #PSL #SportsUpdate #GameChanger #MustWatch #News #CurrentAffairs "
+        "#Trending #Viral #MustSee #TopStory #NewsAlert #NowNews #LiveUpdates"
+    ),
+}
+
+
+def _ensure_fb_footer(caption: str, intent: str) -> str:
+    """Guarantee the Facebook caption ends with brand hashtags."""
+    footer = _FB_FOOTER.get(intent, _FB_FOOTER["POLITICS"])
+    # Strip any existing hashtag block so we don't duplicate
+    lines = caption.strip().split("\n")
+    body_lines = [
+        l for l in lines
+        if not (l.strip().startswith("#") or all(w.startswith("#") for w in l.split() if w))
+    ]
+    body = "\n".join(body_lines).strip()
+    return body + "\n\n" + footer
+
+
+def _ensure_ig_footer(caption: str, intent: str) -> str:
+    """Guarantee the Instagram caption ends with follow CTA + brand hashtags."""
+    hashtags = _IG_FOOTER.get(intent, _IG_FOOTER["POLITICS"])
+    cta = "Follow @VisionaryMinds for live updates 👇"
+    lines = caption.strip().split("\n")
+    body_lines = [
+        l for l in lines
+        if not (l.strip().startswith("#") or all(w.startswith("#") for w in l.split() if w))
+        and cta not in l
+    ]
+    body = "\n".join(body_lines).strip()
+    return body + "\n\n" + cta + "\n\n" + hashtags
+
 
 def _normalise_intent(intent_data):
     """Normalise scores to sum to 1.0 and set ambiguous flag."""

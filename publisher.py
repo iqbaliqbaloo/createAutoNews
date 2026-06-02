@@ -79,7 +79,9 @@ def post_to_facebook(text, image_path=None):
     }
     print(f"  Posting Facebook via Make.com (image={'yes' if img_url else 'no'})...")
     url = os.getenv("MAKE_WEBHOOK_URL")
-    ok  = _send_to_url(url, payload, "Facebook(MAKE_WEBHOOK_URL)")
+    # retries=1 (no retry) — Make.com may process the request even if we get a
+    # network timeout, so retrying would cause a double post on Facebook.
+    ok  = _send_to_url(url, payload, "Facebook(MAKE_WEBHOOK_URL)", retries=1)
     print("✅ FB posted via Make.com" if ok else "❌ FB post failed")
     return ok
 
