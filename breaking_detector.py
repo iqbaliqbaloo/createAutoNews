@@ -492,8 +492,8 @@ def run():
 
     threshold = SCORE_POST
 
-    articles = _fetch_recent(max_age_minutes=45)
-    logger.info(f"Fetched {len(articles)} recent articles (< 45 min)")
+    articles = _fetch_recent(max_age_minutes=30)
+    logger.info(f"Fetched {len(articles)} recent articles (< 30 min)")
 
     if not articles:
         logger.info("No recent articles — exiting")
@@ -619,7 +619,7 @@ def check_only():
     """
     state     = _load_state()
     threshold = SCORE_POST
-    articles  = _fetch_recent(max_age_minutes=45)
+    articles  = _fetch_recent(max_age_minutes=30)
 
     story_clusters = _build_story_clusters(articles)
 

@@ -658,7 +658,7 @@ def _discover_matches(state):
                 continue
             try:
                 pub_dt = datetime(*entry.published_parsed[:6], tzinfo=timezone.utc)
-                if (now_utc - pub_dt).total_seconds() / 3600 > 6:
+                if (now_utc - pub_dt).total_seconds() / 3600 > 1:
                     continue
             except Exception:
                 continue
