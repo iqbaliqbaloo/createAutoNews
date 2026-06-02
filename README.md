@@ -68,12 +68,11 @@ A separate branded image is composed for each active platform:
 
 | Platform | Canvas | Headline size | Status |
 |----------|--------|---------------|--------|
-| Facebook | 1200 × 630 px | 52 px bold | Active |
-| Instagram | 1080 × 1080 px | 60 px bold | Active |
-| Telegram | 1280 × 720 px | 54 px bold | Active |
-| Twitter / X | 1200 × 675 px | 46 px bold | Commented out in `image_composer.py` |
+| Facebook | 1080 × 1350 px (portrait 4:5) | 58 px bold | Active |
+| Instagram | 1080 × 1350 px (portrait 4:5) | 58 px bold | Active |
+| Telegram | 1280 × 720 px (landscape) | 46 px bold | Active |
 
-**Intent tag colours**
+**Intent badge colours**
 
 | Intent | Tag colour |
 |--------|------------|
@@ -82,8 +81,17 @@ A separate branded image is composed for each active platform:
 | ECONOMY | Green `#057A55` |
 | DISASTER | Orange `#D03801` |
 | SPORTS | Purple `#6C2BD9` |
-
-Sports pipelines use league-specific colours: PSL `#006341`, IPL `#004BA0`, UCL `#001D3D`, EPL `#38003C`.
+| CRICKET / SPORTS_CRICKET | Teal `#007846` |
+| FOOTBALL / SPORTS_FOOTBALL | Green `#057A55` |
+| SPORTS_LIVE | Red `#CC2936` |
+| TENNIS | Gold `#BE8200` |
+| F1 | Red `#E10600` |
+| BOXING | Dark Red `#AA1414` |
+| BASKETBALL | Amber `#C85500` |
+| PSL | `#006341` |
+| IPL | `#004BA0` |
+| UCL | `#001D3D` |
+| EPL | `#38003C` |
 
 ---
 
@@ -198,8 +206,9 @@ All runtime state is written to `data/` (created automatically on first run, per
 | Facebook daily post limit | 10 |
 | Instagram daily post limit | 45 (platform max is 50) |
 | Telegram daily post limit | 30 |
-| Facebook posting cooldown | 5 minutes |
-| Instagram posting cooldown | 45 minutes |
+| Facebook posting cooldown | 30 minutes |
+| Instagram posting cooldown | 45 minutes (+ 15-min FB offset) |
+| Telegram posting cooldown | 20 minutes |
 | Per-intent topic cooldown | 2 hours |
 | Cooldown wait-and-retry window | Up to 20 minutes |
 | CLIP acceptance threshold | 0.27 |
@@ -209,6 +218,7 @@ All runtime state is written to `data/` (created automatically on first run, per
 | Duplicate clustering threshold | Cosine similarity ≥ 0.85 |
 | Title duplicate threshold (DB) | Cosine similarity ≥ 0.78 over last 3 days |
 | Fake news rejection threshold | Trust score < 0.40 |
+| Semantic filter threshold | Cosine similarity ≥ 0.40 to allowed topics |
 | Caps penalty trigger | > 60% uppercase letters in title → −0.25 |
 | FB caption quality threshold | Score < 55/100 → one Groq regeneration attempt |
 | Breaking news post threshold | Score ≥ 60 (night: ≥ 80) |
@@ -240,13 +250,9 @@ scheduler_queue.py           # Per-platform posting rate limiter
 publisher.py                 # Make.com webhook (FB + IG) + Telegram Bot API + Gmail error alerts
 results_logger.py            # Post result logging
 generator.py                 # CLIP model singleton + image download helpers
-clip_validator.py            # CLIP text-image similarity utility
 db.py                        # SQLite post-history (WAL mode, embedding cache)
-scorer.py                    # Keyword relevance scorer
-constants.py                 # Keyword lists (Pakistan locations, breaking, blocked)
 permanent_token.py           # One-time utility: exchanges FB short-lived token for permanent page token
 debug.py                     # API connectivity tester
-trending.py                  # pytrends + RSS trend engine (standalone utility)
 requirements.txt
 scripts/
     refresh_image_library.py # Refreshes local image library by intent

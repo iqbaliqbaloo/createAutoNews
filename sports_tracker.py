@@ -60,13 +60,16 @@ IMPORTANCE_SIGNALS = [
     "ashes", "icc", "psl", "ipl", "live", "t20i", "odi",
     "test match", "asia cup", "grand slam", "grand prix",
     "won", "wins", "victory", "result", "preview", "series",
+    "match", "pakistan", "fixture", "squad", "playing xi",
 ]
 
 # RSS feeds covering ALL major sports — cricket, football, tennis, F1, etc.
 DISCOVERY_RSS = [
-    # Cricket
+    # Cricket — general + Pakistan-specific
     "https://www.espncricinfo.com/rss/content/story/feeds/0.xml",
     "https://news.google.com/rss/search?q=cricket+live+match&hl=en&gl=PK&ceid=PK:en",
+    "https://news.google.com/rss/search?q=pakistan+cricket+match+today&hl=en&gl=PK&ceid=PK:en",
+    "https://news.google.com/rss/search?q=pakistan+vs+cricket&hl=en&gl=PK&ceid=PK:en",
     # Football
     "https://news.google.com/rss/search?q=football+live+match+today&hl=en&gl=PK&ceid=PK:en",
     "https://news.google.com/rss/search?q=champions+league+match&hl=en&gl=PK&ceid=PK:en",
@@ -76,6 +79,7 @@ DISCOVERY_RSS = [
     # Pakistan outlets (cover all local + international sports)
     "https://www.geo.tv/rss/1/0",
     "https://arynews.tv/feed/",
+    "https://www.dawn.com/feeds/home",
 ]
 
 # Cricket teams kept for live-match polling (cricket-specific RSS search)
@@ -293,8 +297,12 @@ def _build_caption(match, event_type, score_text, update_text):
     }
     headline = emoji_map.get(event_type, f"{sport_label} | 🔄 LIVE UPDATE")
 
+    live_prefix = "🔴 LIVE\n\n" if event_type in (
+        "GOAL", "WICKET", "CENTURY", "RED_CARD", "DEATH_OVERS",
+        "FULL_TIME", "RESULT", "HALF_TIME",
+    ) else ""
     base = (
-        f"{headline}\n\n"
+        f"{live_prefix}{headline}\n\n"
         f"{team1} vs {team2}\n"
         f"{score_text}\n\n"
         f"{update_text}\n\n"
@@ -650,7 +658,7 @@ def _discover_matches(state):
                 continue
             try:
                 pub_dt = datetime(*entry.published_parsed[:6], tzinfo=timezone.utc)
-                if (now_utc - pub_dt).total_seconds() / 3600 > 2:
+                if (now_utc - pub_dt).total_seconds() / 3600 > 6:
                     continue
             except Exception:
                 continue

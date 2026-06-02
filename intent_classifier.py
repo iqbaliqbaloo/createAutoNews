@@ -144,13 +144,11 @@ def classify_and_generate(article, groq_client=None, trending_context=""):
 
     title       = article.get("title", "")
     description = (article.get("summary", "") or article.get("description", "") or "")[:500]
-    source      = article.get("domain", "Unknown")
     intent_tags = " | ".join(f"{k}: {v}" for k, v in _INTENT_HASHTAGS.items())
 
     user_prompt = f"""\
 Article Title: {title}
 Article Description: {description}
-Source Domain: {source}
 
 Classify this article and generate captions. Return ONLY this JSON structure:
 
@@ -174,6 +172,8 @@ Classify this article and generate captions. Return ONLY this JSON structure:
     "image_headline": "..."
   }}
 }}
+
+STRICT RULE (all captions): NEVER mention any news channel, outlet, website, or media organisation (e.g. Al Jazeera, BBC, Reuters, CNN, Dawn, Geo, ARY). Write as original reporting.
 
 RULES — Intent:
 - All 5 scores must sum to exactly 1.0

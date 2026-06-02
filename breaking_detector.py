@@ -399,9 +399,11 @@ def _run_fast_pipeline(article, caption_prefix="", score=0):
         article.get("published_at"),
         image_path=best_image_path,
     )
-    if caption_prefix:
-        for p in captions:
-            captions[p] = caption_prefix + captions[p]
+    # Always stamp breaking/update label at the top of every caption
+    breaking_prefix = caption_prefix if caption_prefix else "🔴 BREAKING NEWS\n\n"
+    for p in captions:
+        if isinstance(captions[p], str):
+            captions[p] = breaking_prefix + captions[p]
 
     # Instagram only for massive trending stories (score >= 80) — daily limit conservation
     post_instagram = score >= 80
