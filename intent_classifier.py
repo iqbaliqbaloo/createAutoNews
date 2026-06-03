@@ -5,7 +5,7 @@ import random
 
 logger = logging.getLogger(__name__)
 
-INTENTS = ["WAR", "POLITICS", "ECONOMY", "DISASTER", "SPORTS", "TECHNOLOGY", "ENTERTAINMENT"]
+INTENTS = ["WAR", "POLITICS", "ECONOMY", "DISASTER", "HEALTH", "SPORTS", "TECHNOLOGY", "ENTERTAINMENT"]
 
 # Topic label shown at the very top of every Facebook and Instagram caption
 TOPIC_LABELS = {
@@ -13,6 +13,7 @@ TOPIC_LABELS = {
     "POLITICS":      "🏛️ POLITICS",
     "ECONOMY":       "📈 ECONOMY",
     "DISASTER":      "🚨 DISASTER ALERT",
+    "HEALTH":        "🏥 HEALTH ALERT",
     "SPORTS":        "🏆 SPORTS",
     "TECHNOLOGY":    "💡 TECHNOLOGY",
     "ENTERTAINMENT": "🎬 ENTERTAINMENT",
@@ -20,7 +21,7 @@ TOPIC_LABELS = {
 
 _SYSTEM_PROMPT = """\
 You are a news classifier and social media writer. Given a news article, you must:
-1. Classify it into exactly one of: WAR, POLITICS, ECONOMY, DISASTER, SPORTS, TECHNOLOGY, ENTERTAINMENT
+1. Classify it into exactly one of: WAR, POLITICS, ECONOMY, DISASTER, HEALTH, SPORTS, TECHNOLOGY, ENTERTAINMENT
 2. Write platform-specific captions for Facebook, Instagram, and Telegram
 
 Respond ONLY with valid JSON — no markdown fences, no commentary.\
@@ -31,6 +32,7 @@ _INTENT_HASHTAGS = {
     "POLITICS":      "#Politics #BreakingNews #WorldNews #GlobalPolitics #CurrentAffairs #PoliticalNews #MustRead #TopStory",
     "ECONOMY":       "#Economy #Finance #WorldNews #MarketNews #Inflation #EconomicCrisis #MoneyMatters #MustKnow",
     "DISASTER":      "#Disaster #BreakingNews #WorldNews #NaturalDisaster #EmergencyAlert #PrayersNeeded #HumanityFirst #UrgentNews",
+    "HEALTH":        "#Health #BreakingNews #WorldNews #HealthAlert #PublicHealth #Outbreak #MedicalNews #StaySafe #UrgentNews",
     "SPORTS":        "#Sports #BreakingNews #WorldNews #Cricket #Football #PSL #SportsUpdate #GameChanger #MustWatch",
     "TECHNOLOGY":    "#Technology #Tech #AI #Innovation #Digital #Gadgets #TechNews #FutureTech #MustRead #TechUpdate",
     "ENTERTAINMENT": "#Entertainment #Bollywood #Lollywood #Celebrity #Movies #Music #Trending #MustWatch #PopCulture #Viral",
@@ -61,6 +63,12 @@ _VIRAL_HOOKS = {
         "This is devastating. Here is what is happening right now:",
         "Lives are at stake. Share this so the world responds:",
         "A tragedy is unfolding — the world must see this:",
+    ],
+    "HEALTH":        [
+        "This health alert affects millions of people worldwide:",
+        "An urgent medical situation is developing — here is what you need to know:",
+        "Public health officials are responding to this developing situation:",
+        "This is the health story everyone needs to be aware of right now:",
     ],
     "SPORTS":        [
         "A major development just emerged from the sporting world:",
@@ -175,6 +183,7 @@ Classify this article and generate captions. Return ONLY this JSON structure:
       {{"label": "POLITICS",      "score": 0.00}},
       {{"label": "ECONOMY",       "score": 0.00}},
       {{"label": "DISASTER",      "score": 0.00}},
+      {{"label": "HEALTH",        "score": 0.00}},
       {{"label": "SPORTS",        "score": 0.00}},
       {{"label": "TECHNOLOGY",    "score": 0.00}},
       {{"label": "ENTERTAINMENT", "score": 0.00}}
@@ -220,8 +229,8 @@ RULES — Facebook caption:
 GOAL: Write like a knowledgeable friend explaining the news. Simple words, short sentences (max 12 words each).
 - Line 1 (TOPIC LABEL): Start with:
   WAR → "⚔️ WAR & CONFLICT |"  POLITICS → "🏛️ POLITICS |"
-  ECONOMY → "📈 ECONOMY |"       DISASTER → "🚨 DISASTER ALERT |"  SPORTS → "🏆 SPORTS |"
-  TECHNOLOGY → "💡 TECHNOLOGY |"  ENTERTAINMENT → "🎬 ENTERTAINMENT |"
+  ECONOMY → "📈 ECONOMY |"       DISASTER → "🚨 DISASTER ALERT |"  HEALTH → "🏥 HEALTH ALERT |"
+  SPORTS → "🏆 SPORTS |"  TECHNOLOGY → "💡 TECHNOLOGY |"  ENTERTAINMENT → "🎬 ENTERTAINMENT |"
   Then write ONE clear sentence about what happened.
 - Explanation (adapt length to story complexity):
   • Simple news (sports score, resignation, celebrity): 1-2 sentences
@@ -341,6 +350,7 @@ _FB_FOOTER = {
     "POLITICS":      "#VisionaryMinds #VMUpdates #BreakingNews #WorldNews #Politics #CurrentAffairs",
     "ECONOMY":       "#VisionaryMinds #VMUpdates #BreakingNews #WorldNews #Economy #Finance",
     "DISASTER":      "#VisionaryMinds #VMUpdates #BreakingNews #WorldNews #Disaster #EmergencyAlert",
+    "HEALTH":        "#VisionaryMinds #VMUpdates #BreakingNews #WorldNews #Health #PublicHealth #HealthAlert #Outbreak",
     "SPORTS":        "#VisionaryMinds #VMUpdates #BreakingNews #WorldNews #Sports #SportsUpdate",
     "TECHNOLOGY":    "#VisionaryMinds #VMUpdates #Technology #Tech #AI #Innovation #TechNews #Digital",
     "ENTERTAINMENT": "#VisionaryMinds #VMUpdates #Entertainment #Bollywood #Lollywood #Celebrity #Movies #Music",
@@ -365,6 +375,11 @@ _IG_FOOTER = {
     "DISASTER":      (
         "#VisionaryMinds #VMUpdates #BreakingNews #WorldNews #Disaster #NaturalDisaster "
         "#EmergencyAlert #PrayersNeeded #HumanityFirst #UrgentNews #News #CurrentAffairs "
+        "#Trending #Viral #MustSee #TopStory #NewsAlert #GlobalNews #NowNews"
+    ),
+    "HEALTH":        (
+        "#VisionaryMinds #VMUpdates #BreakingNews #WorldNews #Health #PublicHealth "
+        "#HealthAlert #Outbreak #MedicalNews #StaySafe #UrgentNews #News #CurrentAffairs "
         "#Trending #Viral #MustSee #TopStory #NewsAlert #GlobalNews #NowNews"
     ),
     "SPORTS":        (
@@ -439,6 +454,8 @@ def _fallback_result(article):
         hook_key = "ECONOMY"
     elif any(w in title_lower for w in ["earthquake", "flood", "disaster", "emergency", "rescue"]):
         hook_key = "DISASTER"
+    elif any(w in title_lower for w in ["virus", "disease", "outbreak", "pandemic", "vaccine", "ebola", "hospital", "health", "epidemic", "infection"]):
+        hook_key = "HEALTH"
     elif any(w in title_lower for w in ["match", "cricket", "football", "sports", "goal", "wicket"]):
         hook_key = "SPORTS"
     elif any(w in title_lower for w in ["ai", "tech", "apple", "google", "phone", "software", "cyber", "robot"]):

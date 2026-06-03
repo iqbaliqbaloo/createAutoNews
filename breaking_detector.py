@@ -480,9 +480,9 @@ def _run_fast_pipeline(article, caption_prefix="", score=0):
     from publisher             import post_to_facebook, post_to_instagram, post_to_telegram
     from db                    import init_db, already_posted, mark_posted
 
-    # Lower trust threshold for breaking news
+    # Minimum trust threshold for breaking news
     trust = fake_news_score(article)
-    if trust < 0.30:
+    if trust < 0.60:
         logger.info(f"Breaking trust too low ({trust:.2f}), skipping")
         return []
 

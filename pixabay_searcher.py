@@ -12,7 +12,7 @@ from scene_selector import get_search_keywords, BROAD_FALLBACKS
 
 logger = logging.getLogger(__name__)
 
-CLIP_ACCEPT_THRESHOLD    = 0.27
+CLIP_ACCEPT_THRESHOLD    = 0.32
 MAX_RETRY_LOOPS          = 3
 PIXABAY_RESULTS_PER_CALL = 15
 
@@ -188,9 +188,41 @@ def _get_next_page(cache_key):
 
 # ── CLIP scoring ───────────────────────────────────────────────────────────
 
-def _clip_score(image_path, scene_keywords):
-    keyword_str = " ".join(scene_keywords)[:200]
-    return _compute_clip_score(keyword_str, image_path)
+_INTENT_DESCRIPTIONS = {
+    "WAR":           "military attack soldiers war conflict battlefield",
+    "POLITICS":      "government politics parliament leader speech election",
+    "ECONOMY":       "finance economy stock market money business trade",
+    "DISASTER":      "natural disaster flood earthquake emergency rescue",
+    "HEALTH":        "hospital doctor medical health outbreak virus protest",
+    "SPORTS":        "sports match stadium athletes competition trophy",
+    "TECHNOLOGY":    "technology innovation digital computer AI robot",
+    "ENTERTAINMENT": "celebrity entertainment music film award bollywood",
+}
+
+def _clip_score(image_path, scene_keywords, article_title=None, intent=None):
+    """
+    Score image against multiple text angles, return the MAX score.
+    More angles = better chance of catching a genuinely relevant image.
+    """
+    texts = []
+
+    # 1. Article title — most specific, highest priority
+    if article_title:
+        texts.append(article_title[:200])
+
+    # 2. Search keywords — what we actually searched for
+    if scene_keywords:
+        texts.append(" ".join(scene_keywords)[:200])
+
+    # 3. Intent description — broad topic context
+    if intent and intent in _INTENT_DESCRIPTIONS:
+        texts.append(_INTENT_DESCRIPTIONS[intent])
+
+    if not texts:
+        return 0.0
+
+    scores = [_compute_clip_score(t, image_path) for t in texts]
+    return max(scores)
 
 
 # ── Pixabay search ─────────────────────────────────────────────────────────
@@ -309,10 +341,16 @@ def _search_images(keywords, cache_key):
         _increment_pixabay_count()
         urls   = _search_pixabay_raw(keywords, page=page)
         source = f"Pixabay(p{page})"
+        if not urls:
+            logger.warning(f"Pixabay returned 0 results for key={paged_key}")
     else:
         logger.info("Pixabay hourly limit reached — switching to Pexels")
+        print(f"  [IMAGE SOURCE] Pixabay hourly limit hit — trying Pexels")
         urls   = _search_pexels(keywords)
         source = "Pexels"
+        if not urls:
+            logger.warning(f"Pexels returned 0 results for key={paged_key}")
+            print(f"  [IMAGE SOURCE] Pexels — FAILED (0 results or API key missing)")
 
     if urls:
         logger.info(f"{source} returned {len(urls)} URLs for key={paged_key}")
@@ -333,11 +371,16 @@ def _fetch_og_image(article_url):
     try:
         r = requests.get(
             article_url,
-            headers={"User-Agent": "Mozilla/5.0 (NewsBot/1.0)"},
-            timeout=10,
+            headers={
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+                "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+                "Accept-Language": "en-US,en;q=0.9",
+            },
+            timeout=15,
             allow_redirects=True,
         )
         if r.status_code != 200:
+            logger.warning(f"og:image page returned {r.status_code} for {article_url}")
             return None, None
 
         # Try both attribute orderings — property first or content first
@@ -452,16 +495,20 @@ def search_with_clip_validation(intent_result, article=None):
     if article and article.get("url"):
         og_url, og_path = _fetch_og_image(article["url"])
         if og_url and og_path:
-            print(f"  [og:image] Using article's own photo")
+            print(f"  [IMAGE SOURCE] og:image (article's own photo) CLIP=1.000")
             _mark_image_used(og_url)
             return og_url, 1.0, 0, og_path
+        else:
+            print(f"  [IMAGE SOURCE] og:image — FAILED (no image tag or download error)")
 
     # ── Step 2: Google Custom Search — news-specific images by article title ─
+    # Only use Google quota for articles where og:image failed (saves 100/day limit)
     article_title = (article or {}).get("title", "")
     if article_title:
+        # Use full title for Google — it finds actual news photos
         google_urls = _search_google_images(article_title)
         if google_urls:
-            print(f"  [Google Images] {len(google_urls)} results")
+            print(f"  [IMAGE SOURCE] Google Images — {len(google_urls)} results found")
             for img_url in google_urls:
                 if _has_been_used(img_url):
                     continue
@@ -469,7 +516,7 @@ def search_with_clip_validation(intent_result, article=None):
                 if not path:
                     continue
                 try:
-                    score = _clip_score(path, [article_title])
+                    score = _clip_score(path, [article_title], article_title=article_title, intent=intent_label)
                 except Exception:
                     _cleanup(path)
                     continue
@@ -482,9 +529,18 @@ def search_with_clip_validation(intent_result, article=None):
                 else:
                     _cleanup(path)
                 if best_score >= CLIP_ACCEPT_THRESHOLD:
-                    print(f"  [Google] Accepted (CLIP={best_score:.3f})")
+                    print(f"  [IMAGE SOURCE] Google Images — ACCEPTED (CLIP={best_score:.3f})")
                     _mark_image_used(best_url)
                     return best_url, best_score, 0, best_path
+            # If no image passed threshold, keep best Google result if score > 0.25
+            # (better than random Pixabay stock photo)
+            if best_path and best_score >= 0.25:
+                print(f"  [IMAGE SOURCE] Google Images — USED best available (CLIP={best_score:.3f})")
+                _mark_image_used(best_url)
+                return best_url, best_score, 0, best_path
+            print(f"  [IMAGE SOURCE] Google Images — FAILED (best CLIP={best_score:.3f} below 0.25)")
+        else:
+            print(f"  [IMAGE SOURCE] Google Images — FAILED (0 results or API key missing)")
 
     loop = 0
     for loop in range(MAX_RETRY_LOOPS + 1):
@@ -503,7 +559,7 @@ def search_with_clip_validation(intent_result, article=None):
                 continue
 
             try:
-                score = _clip_score(path, keywords)
+                score = _clip_score(path, keywords, article_title=article_title, intent=intent_label)
             except Exception as e:
                 logger.warning(f"CLIP error: {e}")
                 _cleanup(path)
@@ -521,7 +577,8 @@ def search_with_clip_validation(intent_result, article=None):
                 _cleanup(path)
 
             if best_score >= CLIP_ACCEPT_THRESHOLD:
-                print(f"  Accepted (CLIP={best_score:.3f}, loop={loop})")
+                source_name = "Pixabay" if _pixabay_calls_this_hour() <= PIXABAY_HOURLY_LIMIT else "Pexels"
+                print(f"  [IMAGE SOURCE] {source_name} — ACCEPTED (CLIP={best_score:.3f}, loop={loop})")
                 _mark_image_used(best_url)
                 return best_url, best_score, loop, best_path
 
@@ -530,7 +587,7 @@ def search_with_clip_validation(intent_result, article=None):
 
     # ── Intent-specific broad fallback (never generic) ────────────────────
     if best_path is None:
-        print("  All specific searches failed — trying intent-specific broad fallback")
+        print(f"  [IMAGE SOURCE] All loops failed — trying broad fallback for intent={intent_label}")
         broad_terms = BROAD_FALLBACKS.get(intent_label, BROAD_FALLBACKS.get("POLITICS", ["news"]))
         for fallback in broad_terms:
             fallback_key = f"{intent_label}_broad_{fallback[:20].replace(' ', '_')}"
@@ -541,7 +598,7 @@ def search_with_clip_validation(intent_result, article=None):
                 if not path:
                     continue
                 try:
-                    score = _clip_score(path, [fallback])
+                    score = _clip_score(path, [fallback], article_title=article_title, intent=intent_label)
                 except Exception:
                     _cleanup(path)
                     continue
@@ -562,10 +619,12 @@ def search_with_clip_validation(intent_result, article=None):
     if best_path is None:
         local = _local_library_path(intent_label)
         if local:
-            print(f"  Using local library image: {local}")
+            print(f"  [IMAGE SOURCE] Local library — USED (all APIs failed): {local}")
             best_path  = local
             best_url   = ""
             best_score = 0.0
+        else:
+            print(f"  [IMAGE SOURCE] ALL SOURCES FAILED — no image available")
 
-    print(f"  Best available: CLIP={best_score:.3f} retries={loop} path={'ok' if best_path else 'NONE'}")
+    print(f"  [IMAGE RESULT] CLIP={best_score:.3f} retries={loop} path={'ok' if best_path else 'NONE'}")
     return best_url, best_score, loop, best_path

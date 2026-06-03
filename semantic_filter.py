@@ -18,9 +18,11 @@ ALLOWED_TOPICS = [
     # Natural disasters / humanitarian
     "earthquake flood hurricane wildfire disaster victims rescue emergency",
     "humanitarian crisis refugees displaced civilians famine aid",
-    # Health / pandemic
+    # Health / pandemic / medical
     "disease outbreak pandemic virus deaths hospital WHO health emergency",
     "Ebola cholera epidemic casualties medical response",
+    "vaccine protest opposition health policy public resistance",
+    "health facility centre opposition government protest",
     # Crime / security / terrorism
     "attack bombing explosion arrested killed police investigation FBI",
     "terrorism extremist militant threat national security crime",
