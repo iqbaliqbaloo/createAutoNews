@@ -501,8 +501,9 @@ def _run_fast_pipeline(article, caption_prefix="", score=0):
     finally:
         _ps.MAX_RETRY_LOOPS = orig_loops
 
-    captions = intent_result["captions"]
+    captions       = intent_result["captions"]
     image_headline = (captions.get("image_headline") or article["title"]).strip()
+    image_subtext  = captions.get("image_subtext", "")
 
     platform_images = save_platform_images(
         image_url,
@@ -511,6 +512,7 @@ def _run_fast_pipeline(article, caption_prefix="", score=0):
         article.get("domain", "Unknown"),
         article.get("published_at"),
         image_path=best_image_path,
+        image_subtext=image_subtext,
     )
     # Always stamp breaking/update label at the top of every caption
     breaking_prefix = caption_prefix if caption_prefix else "🔴 BREAKING NEWS\n\n"

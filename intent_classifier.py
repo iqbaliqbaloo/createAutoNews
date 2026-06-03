@@ -166,10 +166,11 @@ Classify this article and generate captions. Return ONLY this JSON structure:
     "ambiguous": false
   }},
   "captions": {{
-    "facebook":      "...",
-    "instagram":     "...",
-    "telegram":      "...",
-    "image_headline": "..."
+    "facebook":       "...",
+    "instagram":      "...",
+    "telegram":       "...",
+    "image_headline": "...",
+    "image_subtext":  "line 1 here\noptional line 2 here"
   }}
 }}
 
@@ -180,37 +181,53 @@ RULES — Intent:
 - Set ambiguous=true if top score < 0.50
 - primary = highest-score label; secondary = second-highest
 
-RULES — Image Headline (overlay text printed on the image, max 6 words):
+RULES — Image Headline (big bold text on image, max 6 words):
 - Write exactly 4-6 plain words — the single most important fact
 - Use the simplest words possible (Grade 5 reading level)
 - No emojis, no hashtags, no punctuation at the end
-- Good examples: "Storm Delays Gujarat Titans Match" / "Trump Cancels Anniversary Concerts"
+- Good examples: "Pakistan Beats India By 5 Wickets" / "Trump Cancels Anniversary Concerts"
 - Bad examples: anything over 6 words, complex words, hashtags or emojis
 
-RULES — Facebook caption (max 300 chars before hashtags):
-GOAL: Write like texting a friend — short, simple, easy to understand. Max 10 words per sentence.
+RULES — Image Subtext (smaller explanation text below headline, max 2 lines):
+- Line 1: One complete simple sentence, max 12 words — WHO did WHAT or key detail
+- Line 2 (optional, only if genuinely useful): max 12 words — WHERE or WHEN
+- Write enough words so the meaning is fully clear — do NOT cut mid-thought
+- Separate the two lines with \n
+- No emojis, no hashtags, no punctuation at end of lines
+- Plain simple words — Grade 5 reading level
+- Good example: "Won by 5 wickets in the final over at Dubai\nMatch was part of the Asia Cup 2025"
+- If only one line is needed, just write one line — do not force a second line
+
+RULES — Facebook caption:
+GOAL: Write like a knowledgeable friend explaining the news. Simple words, short sentences (max 12 words each).
 - Line 1 (TOPIC LABEL): Start with:
   WAR → "⚔️ WAR & CONFLICT |"  POLITICS → "🏛️ POLITICS |"
   ECONOMY → "📈 ECONOMY |"       DISASTER → "🚨 DISASTER ALERT |"  SPORTS → "🏆 SPORTS |"
-  Then write ONE simple sentence (max 10 words) about what happened. Example: "🏆 SPORTS | Gujarat Titans flight was delayed by a storm."
-- Lines 2-3: 1-2 short sentences. Max 10 words each. Simple words only.
+  Then write ONE clear sentence about what happened.
+- Explanation (adapt length to story complexity):
+  • Simple news (sports score, resignation): 1-2 sentences
+  • Moderate news (political decision, economic change): 2-3 sentences with brief context
+  • Complex news (war, crisis, disaster): 3-4 sentences explaining who, what, why it matters
+- Each sentence max 12 words. Plain simple English only.
 - Final line: 5-8 hashtags including #VisionaryMinds #BreakingNews and topic-specific tags from: {intent_tags}
-- No URLs. Max 2 emojis.
+- No URLs. Max 2 emojis total.
 
-RULES — Instagram caption (max 200 visible chars + hashtags):
-- Write like a text message — very short, very simple. Max 8 words per sentence.
-- Line 1: Topic label + one simple sentence about what happened
-  e.g. "🏆 SPORTS 🔴 Gujarat Titans flight delayed by storm."
-- Line 2: One short simple fact (max 8 words)
+RULES — Instagram caption:
+- Line 1: Topic label + one clear sentence about what happened
+- Explanation (adapt to complexity — same rules as Facebook above)
+- Each sentence on its own line. Max 12 words per sentence.
 - Add: "Follow @VisionaryMinds for live updates 👇"
 - Do NOT include any URL or link
 - 25-30 hashtags including #VisionaryMinds #BreakingNews #WorldNews #News #CurrentAffairs #Trending #Viral #MustSee #TopStory
 - Add location hashtags if a country/city is mentioned
 - Add topic-specific tags from: {intent_tags}
 
-RULES — Telegram caption (max 500 chars):
-- Start: "🔴 **BREAKING: {{one simple sentence, max 12 words}}**"
-- 2-3 short factual sentences. Max 10 words each. Simple plain English only.
+RULES — Telegram caption:
+- Start: "🔴 **BREAKING: {{one clear sentence summary}}**"
+- Explanation (adapt to complexity):
+  • Simple news: 2 short sentences
+  • Complex news: 3-5 sentences covering who/what/where/when/why it matters
+- Each sentence max 12 words. Simple plain English only.
 - End with 3-5 hashtags including #VisionaryMinds #BreakingNews
 - Do NOT include any URL or link
 - Use **bold** for the opening headline only
@@ -252,11 +269,11 @@ Brand tags always include: #VisionaryMinds #VMUpdates
 
         # ── Length optimisation ────────────────────────────────────────────
         if captions.get("facebook"):
-            captions["facebook"] = optimize_length(captions["facebook"], max_words=55)
+            captions["facebook"] = optimize_length(captions["facebook"], max_words=100)
         if captions.get("instagram"):
-            captions["instagram"] = optimize_length(captions["instagram"], max_words=40)
+            captions["instagram"] = optimize_length(captions["instagram"], max_words=80)
         if captions.get("telegram"):
-            captions["telegram"] = optimize_length(captions["telegram"], max_words=70)
+            captions["telegram"] = optimize_length(captions["telegram"], max_words=120)
 
         # ── Guaranteed hashtag + CTA footer (never rely on LLM alone) ─────
         primary = intent_data.get("primary", "POLITICS")
@@ -270,6 +287,26 @@ Brand tags always include: #VisionaryMinds #VMUpdates
             words = captions["image_headline"].split()
             if len(words) > 6:
                 captions["image_headline"] = " ".join(words[:6])
+
+        if captions.get("image_subtext"):
+            raw_lines = captions["image_subtext"].replace("\\n", "\n").split("\n")[:2]
+            trimmed = []
+            for line in raw_lines:
+                line = line.strip()
+                if not line:
+                    continue
+                words = line.split()
+                if len(words) > 12:
+                    # Try to cut at last sentence boundary before word 12
+                    chunk = " ".join(words[:12])
+                    for punct in (".", ",", "—", "-"):
+                        idx = chunk.rfind(punct)
+                        if idx > len(chunk) // 2:
+                            chunk = chunk[:idx].strip()
+                            break
+                    line = chunk
+                trimmed.append(line)
+            captions["image_subtext"] = "\n".join(trimmed) if trimmed else ""
 
         return {"intent": intent_data, "captions": captions}
 

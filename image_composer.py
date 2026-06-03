@@ -62,42 +62,51 @@ BADGE_LABELS = {
 PLATFORMS = {
     "facebook": {
         "canvas":        (1080, 1350),
-        "overlay_start": 0.58,   # dark overlay begins here
-        "gradient_h":    160,    # fade zone above overlay
+        "overlay_start": 0.65,
+        "gradient_h":    110,
         "badge_fs":      30,
         "headline_fs":   52,
+        "subtext_fs":    30,
         "logo_fs":       22,
         "logo_pad_x":    16,
         "logo_pad_y":    10,
         "pad":           44,
         "line_gap":      16,
-        "badge_y_frac":  0.66,   # badge vertical position (fraction of H)
+        "badge_y_frac":  0.68,
+        "corner_r":      32,
+        "border_w":      6,
     },
     "instagram": {
         "canvas":        (1080, 1350),
-        "overlay_start": 0.58,
-        "gradient_h":    160,
+        "overlay_start": 0.65,
+        "gradient_h":    110,
         "badge_fs":      30,
         "headline_fs":   52,
+        "subtext_fs":    30,
         "logo_fs":       22,
         "logo_pad_x":    16,
         "logo_pad_y":    10,
         "pad":           44,
         "line_gap":      16,
-        "badge_y_frac":  0.66,
+        "badge_y_frac":  0.68,
+        "corner_r":      32,
+        "border_w":      6,
     },
     "telegram": {
         "canvas":        (1280, 720),
-        "overlay_start": 0.52,
-        "gradient_h":    120,
+        "overlay_start": 0.58,
+        "gradient_h":    80,
         "badge_fs":      24,
         "headline_fs":   40,
+        "subtext_fs":    24,
         "logo_fs":       18,
         "logo_pad_x":    14,
         "logo_pad_y":    8,
         "pad":           38,
         "line_gap":      12,
-        "badge_y_frac":  0.60,
+        "badge_y_frac":  0.62,
+        "corner_r":      20,
+        "border_w":      4,
     },
 }
 
@@ -197,7 +206,8 @@ def _wrap_headline(draw, text, font, max_width, max_lines=3):
 # ── Core composition ───────────────────────────────────────────────────────
 
 def compose_image(image_url, platform, intent, headline, source_name,
-                  published_at=None, image_path=None, tag_color=None):
+                  published_at=None, image_path=None, tag_color=None,
+                  image_subtext=None):
     """
     Portrait breaking-news broadcast graphic — Al Jazeera style.
 
@@ -238,48 +248,60 @@ def compose_image(image_url, platform, intent, headline, source_name,
         base = _crop_to_canvas(base, W, H)
         base = _enhance_photo(base)
 
-    # 2. Dark navy gradient overlay on the lower portion ───────────────────
+    # 2. Gradient overlay — tinted with accent colour, reduced opacity so
+    #    the background photo stays clearly visible
     overlay_y  = int(H * cfg["overlay_start"])
     gradient_h = cfg["gradient_h"]
 
+    # Tint: 60% dark navy + 40% accent colour — vibrant but readable
+    r_a, g_a, b_a = accent
+    tint = (
+        int(DARK_NAVY[0] * 0.60 + r_a * 0.40),
+        int(DARK_NAVY[1] * 0.60 + g_a * 0.40),
+        int(DARK_NAVY[2] * 0.60 + b_a * 0.40),
+    )
+
     arr = np.zeros((H, W, 4), dtype=np.uint8)
-    # Smooth gradient fade zone (transparent → dark)
+    # Short fast gradient fade (transparent → tinted)
     fade_start = max(0, overlay_y - gradient_h)
     for y in range(fade_start, overlay_y):
         t     = (y - fade_start) / gradient_h
-        alpha = int(230 * (t ** 1.6))
-        arr[y, :, :3] = DARK_NAVY
+        alpha = int(185 * (t ** 2.0))   # steeper curve = faster fade
+        arr[y, :, :3] = tint
         arr[y, :, 3]  = alpha
-    # Solid dark zone
-    arr[overlay_y:, :, :3] = DARK_NAVY
-    arr[overlay_y:, :, 3]  = 235
+    # Text band — 73% opacity, top 65% of photo is untouched
+    arr[overlay_y:, :, :3] = tint
+    arr[overlay_y:, :, 3]  = 185
 
     overlay = Image.fromarray(arr, "RGBA")
     photo   = Image.alpha_composite(base, overlay).convert("RGB")
     draw    = ImageDraw.Draw(photo)
 
-    # 3. Logo image — top-left ─────────────────────────────────────────────
-    logo_target_h = int(H * 0.07)   # ~7% of canvas height
-    lx, ly = 20, 20
+    # 3. Logo — top-left, full size, pasted directly ─────────────────────
+    # Logo is circular with its own background so no backdrop needed.
+    logo_target_h = int(H * 0.10)   # 10% of canvas height — clearly visible
+    lx, ly = 18, 18
+
     try:
-        logo = Image.open(LOGO_PATH).convert("RGBA")
-        ratio    = logo_target_h / logo.height
-        logo_w   = int(logo.width * ratio)
-        logo     = logo.resize((logo_w, logo_target_h), Image.LANCZOS)
-        photo.paste(logo, (lx, ly), logo)
+        logo   = Image.open(LOGO_PATH).convert("RGBA")
+        ratio  = logo_target_h / logo.height
+        logo_w = int(logo.width * ratio)
+        logo   = logo.resize((logo_w, logo_target_h), Image.LANCZOS)
+        photo.paste(logo, (lx, ly), logo)   # alpha channel = circular mask
+
     except Exception as e:
-        logger.warning(f"Logo load failed: {e} — falling back to text")
+        logger.warning(f"Logo load failed: {e} — text fallback")
         logo_font = _load_font(cfg["logo_fs"], bold=True)
         ltb       = draw.textbbox((0, 0), BRAND_NAME, font=logo_font)
-        ltext_w   = ltb[2] - ltb[0]
-        ltext_h   = ltb[3] - ltb[1]
-        lpx, lpy  = cfg["logo_pad_x"], cfg["logo_pad_y"]
-        box_w     = ltext_w + lpx * 2
-        box_h     = ltext_h + lpy * 2
-        draw.rectangle([lx, ly, lx + box_w, ly + box_h], fill=(255, 255, 255))
+        ltext_w, ltext_h = ltb[2] - ltb[0], ltb[3] - ltb[1]
+        bpx, bpy  = 14, 8
+        draw.rounded_rectangle(
+            [lx, ly, lx + ltext_w + bpx * 2, ly + ltext_h + bpy * 2],
+            radius=10, fill=tint,
+        )
         draw.text(
-            (lx + lpx - ltb[0], ly + lpy - ltb[1]),
-            BRAND_NAME, font=logo_font, fill=(0, 0, 0),
+            (lx + bpx - ltb[0], ly + bpy - ltb[1]),
+            BRAND_NAME, font=logo_font, fill=(255, 255, 255),
         )
 
     # 4. Coloured badge (category label) ─────────────────────────────────
@@ -311,13 +333,52 @@ def compose_image(image_url, platform, intent, headline, source_name,
     text_y        = badge_top + badge_h + 22
 
     for line in lines:
-        # drop shadow for legibility
-        draw.text((pad + 2, text_y + 2), line, font=headline_font, fill=(0, 0, 0))
+        # soft shadow (1px offset, dark tint — not pure black)
+        draw.text((pad + 1, text_y + 1), line, font=headline_font, fill=(5, 5, 20))
         draw.text((pad,     text_y),     line, font=headline_font, fill=(255, 255, 255))
         text_y += line_step
 
-    # 6. Thin accent stripe at the very bottom ────────────────────────────
-    draw.rectangle([0, H - 6, W, H], fill=accent)
+    # 6. Subtext below headline (smaller font, light grey) ────────────────
+    if image_subtext:
+        subtext_font = _load_font(cfg["subtext_fs"], bold=False)
+        subtext_step = cfg["subtext_fs"] + 10
+        text_y      += 6   # small gap between headline and subtext
+        for sline in image_subtext.strip().split("\n")[:2]:
+            sline = sline.strip()
+            if not sline:
+                continue
+            # Truncate if too wide
+            while sline and _text_wh(draw, sline, subtext_font)[0] > max_text_w:
+                sline = " ".join(sline.split()[:-1])
+            if not sline:
+                continue
+            draw.text((pad + 1, text_y + 1), sline, font=subtext_font, fill=(5, 5, 20))
+            draw.text((pad,     text_y),     sline, font=subtext_font, fill=(220, 220, 230))
+            text_y += subtext_step
+
+    # 7. Rounded corners ──────────────────────────────────────────────────
+    corner_r = cfg.get("corner_r", 28)
+    r_mask   = Image.new("L", (W, H), 0)
+    r_draw   = ImageDraw.Draw(r_mask)
+    r_draw.rounded_rectangle([0, 0, W - 1, H - 1], radius=corner_r, fill=255)
+    rgba  = photo.convert("RGBA")
+    rgba.putalpha(r_mask)
+    # Fill corner areas with tint colour so JPEG has no white corners
+    bg    = Image.new("RGBA", (W, H), (*tint, 255))
+    photo = Image.alpha_composite(bg, rgba).convert("RGB")
+    draw  = ImageDraw.Draw(photo)
+
+    # 8. Accent border with matching radius ───────────────────────────────
+    bw = cfg.get("border_w", 5)
+    draw.rounded_rectangle(
+        [bw // 2, bw // 2, W - bw // 2 - 1, H - bw // 2 - 1],
+        radius=corner_r,
+        outline=accent,
+        width=bw,
+    )
+
+    # 9. Thin accent stripe at the very bottom (inside border) ────────────
+    draw.rectangle([bw + 1, H - 8, W - bw - 1, H - bw - 1], fill=accent)
 
     return photo
 
@@ -326,7 +387,7 @@ def compose_image(image_url, platform, intent, headline, source_name,
 
 def save_platform_images(image_url, intent, headline, source_name,
                          published_at=None, output_dir=None, image_path=None,
-                         tag_color=None):
+                         tag_color=None, image_subtext=None):
     """Generate a branded portrait news image for every active platform."""
     if output_dir is None:
         output_dir = tempfile.mkdtemp(prefix="vm_images_")
@@ -336,7 +397,8 @@ def save_platform_images(image_url, intent, headline, source_name,
         try:
             img  = compose_image(image_url, platform, intent, headline,
                                  source_name, published_at,
-                                 image_path=image_path, tag_color=tag_color)
+                                 image_path=image_path, tag_color=tag_color,
+                                 image_subtext=image_subtext)
             path = os.path.join(output_dir, f"{platform}.jpg")
             img.save(path, "JPEG", quality=96, optimize=True, subsampling=0)
             paths[platform] = path

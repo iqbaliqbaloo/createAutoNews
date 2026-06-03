@@ -51,7 +51,7 @@ from trend_detector import trending_context_string
 
 # ── Config ────────────────────────────────────────────────────────────────
 PKT            = pytz.timezone("Asia/Karachi")
-FB_DAILY_LIMIT = 10
+FB_DAILY_LIMIT = 50
 IG_DAILY_LIMIT = 45
 TG_DAILY_LIMIT = 30
 ARTICLE_CAP    = 100   # hard cap per run (Step 1)
@@ -210,6 +210,7 @@ def run_pipeline():
         _sep()
         captions       = intent_result["captions"]
         image_headline = (captions.get("image_headline") or article["title"]).strip()
+        image_subtext  = captions.get("image_subtext", "")
         source_display = article.get("domain", "Unknown")
         published_at   = article.get("published_at")
 
@@ -220,6 +221,7 @@ def run_pipeline():
             source_display,
             published_at,
             image_path=best_image_path,
+            image_subtext=image_subtext,
         )
         print(f"Images composed: {list(platform_images.keys())}")
 
