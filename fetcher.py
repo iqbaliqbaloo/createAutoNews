@@ -7,19 +7,50 @@ from html import unescape
 from datetime import datetime, timedelta, timezone
 from urllib.parse import urlparse
 DOMAIN_PRIORITY = {
+    # Tier 1
     "reuters.com": 1.0,
-    "reutersagency.com": 1.0,   # feeds.reuters.com / reutersagency.com
+    "reutersagency.com": 1.0,
+    "apnews.com": 1.0,
     "bbc.com": 1.0,
-    "bbci.co.uk": 1.0,          # feeds.bbci.co.uk strips to bbci.co.uk
+    "bbci.co.uk": 1.0,
+    # Tier 2 — world
     "aljazeera.com": 0.92,
-    "dawn.com": 0.88,
     "theguardian.com": 0.92,
-    "france24.com": 0.90,
     "dw.com": 0.92,
     "npr.org": 0.92,
+    "france24.com": 0.90,
+    "independent.co.uk": 0.88,
+    "skynews.com": 0.88,
+    "cnn.com": 0.82,
+    "nbcnews.com": 0.85,
+    "abcnews.go.com": 0.85,
+    "timesofindia.indiatimes.com": 0.80,
+    "ndtv.com": 0.80,
+    # Tier 3 — Pakistan
+    "dawn.com": 0.88,
     "geo.tv": 0.82,
+    "thenews.com.pk": 0.82,
+    "tribune.com.pk": 0.82,
     "arynews.tv": 0.80,
+    "samaa.tv": 0.78,
+    "dunyanews.tv": 0.78,
+    "92newshd.tv": 0.75,
+    "pakistantoday.com.pk": 0.75,
+    "brecorder.com": 0.78,
+    # Sports
+    "espncricinfo.com": 0.90,
+    "skysports.com": 0.88,
+    "espn.com": 0.88,
+    # Technology
+    "techcrunch.com": 0.88,
+    "theverge.com": 0.88,
+    "arstechnica.com": 0.88,
+    "wired.com": 0.85,
+    # Entertainment
+    "bollywoodhungama.com": 0.75,
+    "pinkvilla.com": 0.72,
 }
+
 PAKISTAN_SOURCES = [
     "https://www.geo.tv/rss/1/0",
     "https://arynews.tv/feed/",
@@ -27,7 +58,10 @@ PAKISTAN_SOURCES = [
     "https://www.thenews.com.pk/rss/1/1",
     "https://www.samaa.tv/feed",
     "https://tribune.com.pk/feed/",
-    "https://www.bbc.com/urdu/index.xml",
+    "https://dunyanews.tv/index.php/en?format=feed&type=rss",
+    "https://92newshd.tv/feed/",
+    "https://www.pakistantoday.com.pk/feed/",
+    "https://www.brecorder.com/feed",
 ]
 
 WORLD_SOURCES = [
@@ -38,12 +72,39 @@ WORLD_SOURCES = [
     "https://www.aljazeera.com/xml/rss/all.xml",
     "https://www.france24.com/en/rss",
     "https://www.theguardian.com/world/rss",
-    "https://www.theguardian.com/international/rss",
     "https://www.independent.co.uk/news/world/rss",
     "https://rss.dw.com/atom/en-all",
     "https://feeds.skynews.com/feeds/rss/world.xml",
     "https://feeds.npr.org/1001/rss.xml",
-    "https://www.smh.com.au/rss/world.xml",
+    "https://rss.cnn.com/rss/edition_world.rss",
+    "https://feeds.nbcnews.com/nbcnews/public/news",
+    "https://timesofindia.indiatimes.com/rssfeedstopstories.cms",
+    "https://feeds.feedburner.com/ndtvnews-top-stories",
+]
+
+SPORTS_SOURCES = [
+    "https://www.espncricinfo.com/rss/content/story/feeds/0.xml",
+    "https://feeds.bbci.co.uk/sport/rss.xml",
+    "https://www.skysports.com/rss/12040",
+    "https://news.google.com/rss/search?q=pakistan+cricket&hl=en&gl=PK&ceid=PK:en",
+    "https://news.google.com/rss/search?q=cricket+match+today&hl=en&gl=PK&ceid=PK:en",
+    "https://news.google.com/rss/search?q=football+match+today&hl=en&gl=US&ceid=US:en",
+]
+
+TECH_SOURCES = [
+    "https://techcrunch.com/feed/",
+    "https://www.theverge.com/rss/index.xml",
+    "https://feeds.bbci.co.uk/news/technology/rss.xml",
+    "https://feeds.arstechnica.com/arstechnica/index",
+    "https://news.google.com/rss/topics/CAAqJggKIiBDQkFTRWdvSUwyMHZNRFp4Y0dsallTNWhiRzlyWlhrdUVnUUFHZ0pVVWc?hl=en&gl=US&ceid=US:en",
+]
+
+ENTERTAINMENT_SOURCES = [
+    "https://www.bollywoodhungama.com/rss/news/",
+    "https://www.geo.tv/rss/25/0",
+    "https://www.dawn.com/feeds/entertainment",
+    "https://www.pinkvilla.com/feed",
+    "https://news.google.com/rss/search?q=bollywood+lollywood+entertainment&hl=en&gl=PK&ceid=PK:en",
 ]
 
 HEADERS = {"User-Agent": "Mozilla/5.0 (NewsBot/1.0)"}
@@ -166,9 +227,24 @@ def fetch_articles():
     for u in WORLD_SOURCES:
         process(u, "world")
 
+    print("Fetching Sports sources...")
+    for u in SPORTS_SOURCES:
+        process(u, "sports")
+
+    print("Fetching Technology sources...")
+    for u in TECH_SOURCES:
+        process(u, "tech")
+
+    print("Fetching Entertainment sources...")
+    for u in ENTERTAINMENT_SOURCES:
+        process(u, "entertainment")
+
     print(f"\nTotal fetched: {len(articles)} articles")
+
+    # Sort: world/top-tier first, then by domain trust score
+    SOURCE_PRIORITY = {"world": 0, "pakistan": 1, "sports": 2, "tech": 2, "entertainment": 3}
     articles.sort(key=lambda a: (
-       0 if a["source_type"] == "world" else 1,
-       -DOMAIN_PRIORITY.get(a["domain"], 0.5)
-    ), reverse=False)
+        SOURCE_PRIORITY.get(a["source_type"], 2),
+        -DOMAIN_PRIORITY.get(a["domain"], 0.5),
+    ))
     return articles

@@ -43,6 +43,22 @@ DOMAIN_SCORES = {
     "arynews.tv": 0.80,
     "samaa.tv": 0.78,
     "express.com.pk": 0.72,
+    "dunyanews.tv": 0.78,
+    "92newshd.tv": 0.75,
+    "pakistantoday.com.pk": 0.75,
+    "brecorder.com": 0.78,
+    # Sports
+    "espncricinfo.com": 0.90,
+    "skysports.com": 0.88,
+    "espn.com": 0.88,
+    # Technology
+    "techcrunch.com": 0.88,
+    "theverge.com": 0.88,
+    "arstechnica.com": 0.88,
+    "wired.com": 0.85,
+    # Entertainment
+    "bollywoodhungama.com": 0.75,
+    "pinkvilla.com": 0.72,
     # Tier 4 — opinionated but legitimate
     "foxnews.com": 0.65,
     "thehill.com": 0.72,
