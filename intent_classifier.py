@@ -5,64 +5,80 @@ import random
 
 logger = logging.getLogger(__name__)
 
-INTENTS = ["WAR", "POLITICS", "ECONOMY", "DISASTER", "SPORTS"]
+INTENTS = ["WAR", "POLITICS", "ECONOMY", "DISASTER", "SPORTS", "TECHNOLOGY", "ENTERTAINMENT"]
 
 # Topic label shown at the very top of every Facebook and Instagram caption
 TOPIC_LABELS = {
-    "WAR":      "⚔️ WAR & CONFLICT",
-    "POLITICS": "🏛️ POLITICS",
-    "ECONOMY":  "📈 ECONOMY",
-    "DISASTER": "🚨 DISASTER ALERT",
-    "SPORTS":   "🏆 SPORTS",
+    "WAR":           "⚔️ WAR & CONFLICT",
+    "POLITICS":      "🏛️ POLITICS",
+    "ECONOMY":       "📈 ECONOMY",
+    "DISASTER":      "🚨 DISASTER ALERT",
+    "SPORTS":        "🏆 SPORTS",
+    "TECHNOLOGY":    "💡 TECHNOLOGY",
+    "ENTERTAINMENT": "🎬 ENTERTAINMENT",
 }
 
 _SYSTEM_PROMPT = """\
 You are a news classifier and social media writer. Given a news article, you must:
-1. Classify it into exactly one of: WAR, POLITICS, ECONOMY, DISASTER, SPORTS
+1. Classify it into exactly one of: WAR, POLITICS, ECONOMY, DISASTER, SPORTS, TECHNOLOGY, ENTERTAINMENT
 2. Write platform-specific captions for Facebook, Instagram, and Telegram
 
 Respond ONLY with valid JSON — no markdown fences, no commentary.\
 """
 
 _INTENT_HASHTAGS = {
-    "WAR":      "#Conflict #BreakingNews #WorldNews #WarNews #GlobalCrisis #LiveUpdates #MustShare #UrgentNews",
-    "POLITICS": "#Politics #BreakingNews #WorldNews #GlobalPolitics #CurrentAffairs #PoliticalNews #MustRead #TopStory",
-    "ECONOMY":  "#Economy #Finance #WorldNews #MarketNews #Inflation #EconomicCrisis #MoneyMatters #MustKnow",
-    "DISASTER": "#Disaster #BreakingNews #WorldNews #NaturalDisaster #EmergencyAlert #PrayersNeeded #HumanityFirst #UrgentNews",
-    "SPORTS":   "#Sports #BreakingNews #WorldNews #Cricket #Football #PSL #SportsUpdate #GameChanger #MustWatch",
+    "WAR":           "#Conflict #BreakingNews #WorldNews #WarNews #GlobalCrisis #LiveUpdates #MustShare #UrgentNews",
+    "POLITICS":      "#Politics #BreakingNews #WorldNews #GlobalPolitics #CurrentAffairs #PoliticalNews #MustRead #TopStory",
+    "ECONOMY":       "#Economy #Finance #WorldNews #MarketNews #Inflation #EconomicCrisis #MoneyMatters #MustKnow",
+    "DISASTER":      "#Disaster #BreakingNews #WorldNews #NaturalDisaster #EmergencyAlert #PrayersNeeded #HumanityFirst #UrgentNews",
+    "SPORTS":        "#Sports #BreakingNews #WorldNews #Cricket #Football #PSL #SportsUpdate #GameChanger #MustWatch",
+    "TECHNOLOGY":    "#Technology #Tech #AI #Innovation #Digital #Gadgets #TechNews #FutureTech #MustRead #TechUpdate",
+    "ENTERTAINMENT": "#Entertainment #Bollywood #Lollywood #Celebrity #Movies #Music #Trending #MustWatch #PopCulture #Viral",
 }
 
 # Viral hook openers by intent — chosen randomly to avoid repetition
 _VIRAL_HOOKS = {
-    "WAR":      [
+    "WAR":           [
         "This is happening RIGHT NOW and the world needs to know:",
         "Nobody is talking about this — but they should be:",
         "This changes everything. Here is what is unfolding:",
         "URGENT: A situation the world cannot ignore is developing:",
     ],
-    "POLITICS": [
+    "POLITICS":      [
         "A decision that will affect millions of people was just made:",
         "This is the political story everyone is watching right now:",
         "Something major just shifted on the global stage:",
         "Leaders just made a move that will impact your life:",
     ],
-    "ECONOMY":  [
+    "ECONOMY":       [
         "Your money, your future — this news matters to every family:",
         "The economic news you cannot afford to miss right now:",
         "A financial shift is happening — here is what you need to know:",
         "This economic development is affecting millions of people:",
     ],
-    "DISASTER": [
+    "DISASTER":      [
         "Prayers and thoughts needed — a crisis is unfolding:",
         "This is devastating. Here is what is happening right now:",
         "Lives are at stake. Share this so the world responds:",
         "A tragedy is unfolding — the world must see this:",
     ],
-    "SPORTS":   [
+    "SPORTS":        [
         "A major development just emerged from the sporting world:",
         "Here is what unfolded in today's match:",
         "A significant result has been recorded:",
         "The latest from today's live fixture:",
+    ],
+    "TECHNOLOGY":    [
+        "This tech news is about to change how you live:",
+        "The biggest technology story right now — here is what happened:",
+        "A major breakthrough just happened in the tech world:",
+        "This is the technology update everyone is talking about:",
+    ],
+    "ENTERTAINMENT": [
+        "The entertainment world is talking about this right now:",
+        "Big news just broke from the world of movies and music:",
+        "This celebrity story has everyone talking:",
+        "The latest from Bollywood and the entertainment industry:",
     ],
 }
 
@@ -155,11 +171,13 @@ Classify this article and generate captions. Return ONLY this JSON structure:
 {{
   "intent": {{
     "intents": [
-      {{"label": "WAR",      "score": 0.00}},
-      {{"label": "POLITICS", "score": 0.00}},
-      {{"label": "ECONOMY",  "score": 0.00}},
-      {{"label": "DISASTER", "score": 0.00}},
-      {{"label": "SPORTS",   "score": 0.00}}
+      {{"label": "WAR",           "score": 0.00}},
+      {{"label": "POLITICS",      "score": 0.00}},
+      {{"label": "ECONOMY",       "score": 0.00}},
+      {{"label": "DISASTER",      "score": 0.00}},
+      {{"label": "SPORTS",        "score": 0.00}},
+      {{"label": "TECHNOLOGY",    "score": 0.00}},
+      {{"label": "ENTERTAINMENT", "score": 0.00}}
     ],
     "primary": "LABEL",
     "secondary": "LABEL",
@@ -203,10 +221,11 @@ GOAL: Write like a knowledgeable friend explaining the news. Simple words, short
 - Line 1 (TOPIC LABEL): Start with:
   WAR → "⚔️ WAR & CONFLICT |"  POLITICS → "🏛️ POLITICS |"
   ECONOMY → "📈 ECONOMY |"       DISASTER → "🚨 DISASTER ALERT |"  SPORTS → "🏆 SPORTS |"
+  TECHNOLOGY → "💡 TECHNOLOGY |"  ENTERTAINMENT → "🎬 ENTERTAINMENT |"
   Then write ONE clear sentence about what happened.
 - Explanation (adapt length to story complexity):
-  • Simple news (sports score, resignation): 1-2 sentences
-  • Moderate news (political decision, economic change): 2-3 sentences with brief context
+  • Simple news (sports score, resignation, celebrity): 1-2 sentences
+  • Moderate news (political decision, tech launch, film release): 2-3 sentences with brief context
   • Complex news (war, crisis, disaster): 3-4 sentences explaining who, what, why it matters
 - Each sentence max 12 words. Plain simple English only.
 - Final line: 5-8 hashtags including #VisionaryMinds #BreakingNews and topic-specific tags from: {intent_tags}
@@ -318,38 +337,50 @@ Brand tags always include: #VisionaryMinds #VMUpdates
 # ── Helpers ────────────────────────────────────────────────────────────────
 
 _FB_FOOTER = {
-    "WAR":      "#VisionaryMinds #VMUpdates #BreakingNews #WorldNews #WarNews #GlobalCrisis",
-    "POLITICS": "#VisionaryMinds #VMUpdates #BreakingNews #WorldNews #Politics #CurrentAffairs",
-    "ECONOMY":  "#VisionaryMinds #VMUpdates #BreakingNews #WorldNews #Economy #Finance",
-    "DISASTER": "#VisionaryMinds #VMUpdates #BreakingNews #WorldNews #Disaster #EmergencyAlert",
-    "SPORTS":   "#VisionaryMinds #VMUpdates #BreakingNews #WorldNews #Sports #SportsUpdate",
+    "WAR":           "#VisionaryMinds #VMUpdates #BreakingNews #WorldNews #WarNews #GlobalCrisis",
+    "POLITICS":      "#VisionaryMinds #VMUpdates #BreakingNews #WorldNews #Politics #CurrentAffairs",
+    "ECONOMY":       "#VisionaryMinds #VMUpdates #BreakingNews #WorldNews #Economy #Finance",
+    "DISASTER":      "#VisionaryMinds #VMUpdates #BreakingNews #WorldNews #Disaster #EmergencyAlert",
+    "SPORTS":        "#VisionaryMinds #VMUpdates #BreakingNews #WorldNews #Sports #SportsUpdate",
+    "TECHNOLOGY":    "#VisionaryMinds #VMUpdates #Technology #Tech #AI #Innovation #TechNews #Digital",
+    "ENTERTAINMENT": "#VisionaryMinds #VMUpdates #Entertainment #Bollywood #Lollywood #Celebrity #Movies #Music",
 }
 
 _IG_FOOTER = {
-    "WAR":      (
+    "WAR":           (
         "#VisionaryMinds #VMUpdates #BreakingNews #WorldNews #WarNews #GlobalCrisis "
         "#Conflict #LiveUpdates #UrgentNews #MustShare #News #CurrentAffairs "
         "#Trending #Viral #MustSee #TopStory #NewsAlert #GlobalNews #NowNews"
     ),
-    "POLITICS": (
+    "POLITICS":      (
         "#VisionaryMinds #VMUpdates #BreakingNews #WorldNews #Politics #GlobalPolitics "
         "#CurrentAffairs #PoliticalNews #MustRead #TopStory #News #Trending "
         "#Viral #MustSee #NewsAlert #GlobalNews #NowNews #InformationIsPower"
     ),
-    "ECONOMY":  (
+    "ECONOMY":       (
         "#VisionaryMinds #VMUpdates #BreakingNews #WorldNews #Economy #Finance "
         "#MarketNews #Inflation #EconomicCrisis #MoneyMatters #MustKnow #News "
         "#CurrentAffairs #Trending #Viral #MustSee #TopStory #NewsAlert #NowNews"
     ),
-    "DISASTER": (
+    "DISASTER":      (
         "#VisionaryMinds #VMUpdates #BreakingNews #WorldNews #Disaster #NaturalDisaster "
         "#EmergencyAlert #PrayersNeeded #HumanityFirst #UrgentNews #News #CurrentAffairs "
         "#Trending #Viral #MustSee #TopStory #NewsAlert #GlobalNews #NowNews"
     ),
-    "SPORTS":   (
+    "SPORTS":        (
         "#VisionaryMinds #VMUpdates #BreakingNews #WorldNews #Sports #Cricket "
         "#Football #PSL #SportsUpdate #GameChanger #MustWatch #News #CurrentAffairs "
         "#Trending #Viral #MustSee #TopStory #NewsAlert #NowNews #LiveUpdates"
+    ),
+    "TECHNOLOGY":    (
+        "#VisionaryMinds #VMUpdates #Technology #Tech #AI #Innovation #Digital "
+        "#Gadgets #TechNews #FutureTech #Trending #Viral #MustSee #MustRead "
+        "#TopStory #NewsAlert #TechUpdate #ArtificialIntelligence #Smartphones #NowNews"
+    ),
+    "ENTERTAINMENT": (
+        "#VisionaryMinds #VMUpdates #Entertainment #Bollywood #Lollywood #Celebrity "
+        "#Movies #Music #Trending #Viral #MustWatch #PopCulture #FilmIndustry "
+        "#MustSee #TopStory #NewsAlert #Drama #Fashion #Showbiz #NowNews"
     ),
 }
 
@@ -410,12 +441,16 @@ def _fallback_result(article):
         hook_key = "DISASTER"
     elif any(w in title_lower for w in ["match", "cricket", "football", "sports", "goal", "wicket"]):
         hook_key = "SPORTS"
+    elif any(w in title_lower for w in ["ai", "tech", "apple", "google", "phone", "software", "cyber", "robot"]):
+        hook_key = "TECHNOLOGY"
+    elif any(w in title_lower for w in ["bollywood", "film", "movie", "actor", "singer", "celebrity", "drama", "award"]):
+        hook_key = "ENTERTAINMENT"
     else:
         hook_key = "POLITICS"
     hook = random.choice(_VIRAL_HOOKS[hook_key])
     return {
         "intent": {
-            "intents":   [{"label": l, "score": 0.2} for l in INTENTS],
+            "intents":   [{"label": l, "score": round(1/len(INTENTS), 4)} for l in INTENTS],
             "primary":   "POLITICS",
             "secondary": "WAR",
             "ambiguous": True,

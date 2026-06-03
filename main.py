@@ -29,7 +29,7 @@ from intent_classifier import classify_and_generate
 from virality_scorer import rank_by_virality
 
 # ── Step 6: Topic memory ──────────────────────────────────────────────────
-from topic_memory import get_best_intent, mark_intent_posted
+from topic_memory import get_best_intent, get_ordered_intents, mark_intent_posted
 
 # ── Steps 7 & 8: Scene selection + image search ───────────────────────────
 from pixabay_searcher import search_with_clip_validation
@@ -47,15 +47,18 @@ from scheduler_queue import (
 # ── Step 12: Post + log ───────────────────────────────────────────────────
 from publisher import post_to_facebook, post_to_instagram, post_to_telegram, send_error_email
 from results_logger import log_result, best_hours
-from trend_detector import trending_context_string
+from trend_detector import trending_context_string, build_story_clusters
 
 # ── Config ────────────────────────────────────────────────────────────────
 PKT            = pytz.timezone("Asia/Karachi")
-FB_DAILY_LIMIT = 50
+FB_DAILY_LIMIT = 9999   # no limit
 IG_DAILY_LIMIT = 45
 TG_DAILY_LIMIT = 30
 ARTICLE_CAP    = 100   # hard cap per run (Step 1)
 CLASSIFY_TOP   = 10   # classify top-N fresh articles for intent selection
+MAX_PER_RUN    = 5    # max posts per pipeline run
+FB_QUIET_START = 0    # FB quiet hours: 12 AM PKT (hour 0)
+FB_QUIET_END   = 5    # FB quiet hours end: 5 AM PKT (hour 5)
 
 
 def _sep(char="─", width=60):
@@ -155,6 +158,36 @@ def run_pipeline():
             print("All articles already posted.")
             return
 
+        # ── SOURCE VERIFICATION (tier-based) ──────────────────────────────
+        # Top-tier sources (trust ≥ 0.90): post with 1 source
+        # Mid-tier sources (0.80–0.89): need 2+ sources covering same story
+        # Lower-tier sources (< 0.80): need 3+ sources
+        _sep()
+        print("[STEP 4b] SOURCE VERIFICATION")
+        _sep()
+        story_clusters = build_story_clusters(articles)
+        verified = []
+        for a in fresh:
+            trust        = a.get("trust_score", 0.60)
+            cluster_size = story_clusters.get(a["hash"], 1)
+            if trust >= 0.90:
+                verified.append(a)   # Reuters, BBC etc — trust alone
+            elif trust >= 0.80:
+                if cluster_size >= 2:
+                    verified.append(a)
+                else:
+                    print(f"  HOLD (need 2nd source, trust={trust:.2f}): {a['title'][:65]}")
+            else:
+                if cluster_size >= 3:
+                    verified.append(a)
+                else:
+                    print(f"  HOLD (need 3rd source, trust={trust:.2f}): {a['title'][:65]}")
+        print(f"Verified: {len(verified)}/{len(fresh)}")
+        if not verified:
+            print("No verified stories — waiting for more source coverage.")
+            return
+        fresh = verified
+
         # ── VIRALITY RANKING ───────────────────────────────────────────────
         fresh = rank_by_virality(fresh)
         if fresh and "virality_score" not in fresh[0]:
@@ -182,202 +215,181 @@ def run_pipeline():
         if not classified:
             return
 
-        # ── STEP 6: TOPIC MEMORY CHECK ─────────────────────────────────────
+        # ── STEP 6: ORDER ALL ARTICLES BY INTENT PRIORITY ─────────────────
         _sep()
-        print("[STEP 6] TOPIC MEMORY CHECK")
+        print(f"[STEP 6] ORDERING {len(classified)} ARTICLES BY INTENT PRIORITY")
         _sep()
-        article, intent_result = get_best_intent(classified)
-        primary_intent = intent_result["intent"]["primary"]
-        print(f"Selected article: [{primary_intent}] {article['title'][:70]}")
+        ordered = get_ordered_intents(classified)
+        for i, (a, r) in enumerate(ordered):
+            print(f"  {i+1}. [{r['intent']['primary']}] {a['title'][:65]}")
 
-        # ── STEP 7: SCENE TEMPLATE SELECTION ──────────────────────────────
-        # (handled inside pixabay_searcher — it calls scene_selector per loop)
-
-        # ── STEP 8: IMAGE SEARCH + CLIP VALIDATION ─────────────────────────
+        # ── ONE-TIME COOLDOWN CHECK before the loop ────────────────────────
         _sep()
-        print("[STEP 8] IMAGE SEARCH + CLIP VALIDATION")
+        print("[STEP 11] SCHEDULER QUEUE (pre-check)")
         _sep()
-        image_url, best_clip, retry_count, best_image_path = search_with_clip_validation(
-            intent_result, article
-        )
-        print(f"Image selected: CLIP={best_clip:.3f}, retries={retry_count}, file={'ok' if best_image_path else 'NONE'}")
-        if not best_image_path:
-            print("  WARNING: no image file — dark placeholder will be used")
 
-        # ── STEP 9: IMAGE COMPOSITION ──────────────────────────────────────
-        _sep()
-        print("[STEP 9] IMAGE COMPOSITION (per platform)")
-        _sep()
-        captions       = intent_result["captions"]
-        image_headline = (captions.get("image_headline") or article["title"]).strip()
-        image_subtext  = captions.get("image_subtext", "")
-        source_display = article.get("domain", "Unknown")
-        published_at   = article.get("published_at")
+        def _apply_limits(pl):
+            if fb_count >= FB_DAILY_LIMIT:
+                pl = [p for p in pl if p != "facebook"]
+            if ig_count >= IG_DAILY_LIMIT:
+                pl = [p for p in pl if p != "instagram"]
+            if tg_count >= TG_DAILY_LIMIT:
+                pl = [p for p in pl if p != "telegram"]
+            # Facebook quiet hours 12 AM–5 AM PKT
+            if FB_QUIET_START <= datetime.now(PKT).hour < FB_QUIET_END:
+                pl = [p for p in pl if p != "facebook"]
+                print(f"  Facebook quiet hours ({FB_QUIET_START}AM–{FB_QUIET_END}AM PKT) — skipping FB")
+            return pl
 
-        platform_images = save_platform_images(
-            image_url,
-            primary_intent,
-            image_headline,
-            source_display,
-            published_at,
-            image_path=best_image_path,
-            image_subtext=image_subtext,
-        )
-        print(f"Images composed: {list(platform_images.keys())}")
-
-        if not platform_images:
-            print("Image composition failed for all platforms — aborting.")
-            return
-
-        # ── STEP 11: SCHEDULER QUEUE ───────────────────────────────────────
-        _sep()
-        print("[STEP 11] SCHEDULER QUEUE")
-        _sep()
-        platforms_ready = get_platforms_ready()
-
-        # Apply daily limit filters before checking cooldowns
-        if fb_count >= FB_DAILY_LIMIT:
-            platforms_ready = [p for p in platforms_ready if p != "facebook"]
-        if ig_count >= IG_DAILY_LIMIT:
-            platforms_ready = [p for p in platforms_ready if p != "instagram"]
-        if tg_count >= TG_DAILY_LIMIT:
-            platforms_ready = [p for p in platforms_ready if p != "telegram"]
-
-        print(f"Platforms ready: {platforms_ready}")
+        platforms_ready = _apply_limits(get_platforms_ready())
 
         if not platforms_ready:
-            # If cooldowns expire within 20 minutes, wait rather than discard this run.
-            now_utc = datetime.now(timezone.utc)
+            now_utc  = datetime.now(timezone.utc)
             max_wait = max(
                 max(0, (next_available(p) - now_utc).total_seconds())
                 for p in ["facebook", "instagram", "telegram"]
             )
-            if max_wait <= 1200:   # wait up to 20 min; GH Actions timeout is 35 min
+            if max_wait <= 1200:
                 print(f"  Cooldowns expire in {int(max_wait)}s — waiting...")
                 time.sleep(max_wait + 5)
-                platforms_ready = get_platforms_ready()
-                # Re-apply daily limit filters after wait
-                if fb_count >= FB_DAILY_LIMIT:
-                    platforms_ready = [p for p in platforms_ready if p != "facebook"]
-                if ig_count >= IG_DAILY_LIMIT:
-                    platforms_ready = [p for p in platforms_ready if p != "instagram"]
-                if tg_count >= TG_DAILY_LIMIT:
-                    platforms_ready = [p for p in platforms_ready if p != "telegram"]
+                platforms_ready = _apply_limits(get_platforms_ready())
             else:
-                print(f"  Cooldowns expire in {int(max_wait / 60)}m — queuing for next run.")
-                log_result(
-                    article_url=article.get("url", ""),
-                    intent=primary_intent,
-                    clip_score=best_clip,
-                    image_url=image_url or "",
-                    platforms=[],
-                    status="queued",
-                    retry_count=retry_count,
-                )
-                for path in platform_images.values():
-                    try:
-                        os.unlink(path)
-                    except Exception:
-                        pass
-                try:
-                    if best_image_path and os.path.exists(best_image_path):
-                        os.unlink(best_image_path)
-                except Exception:
-                    pass
+                print(f"  Cooldowns expire in {int(max_wait / 60)}m — skipping run.")
                 return
 
-        # ── STEP 12: POST + LOG ────────────────────────────────────────────
+        print(f"Platforms ready: {platforms_ready}")
+        if not platforms_ready:
+            print("No platforms available — exiting.")
+            return
+
+        # ── STEPS 8-12 LOOP: post up to MAX_PER_RUN articles ──────────────
         _sep()
-        print("[STEP 12] POST + LOG")
+        print(f"[STEP 8–12] MULTI-POST LOOP (max {MAX_PER_RUN} per run)")
         _sep()
-        posted_platforms = []
+        posts_this_run = 0
 
-        if "facebook" in platforms_ready and "facebook" in platform_images:
-            if already_posted(conn, article["hash"], "facebook"):
-                print("  Facebook already posted (another pipeline) — skipping")
-            else:
-                fb_ok = post_to_facebook(captions["facebook"], platform_images["facebook"])
-                if fb_ok:
-                    queue_mark_posted("facebook")
-                    mark_posted(conn, article["hash"], article["title"], "facebook")
-                    fb_count += 1
-                    posted_platforms.append("facebook")
-                    print(f"  Facebook [FB {fb_count}/{FB_DAILY_LIMIT}] ✔")
-                else:
-                    print("  Facebook failed")
+        for article, intent_result in ordered:
+            if posts_this_run >= MAX_PER_RUN:
+                break
 
-        if "instagram" in platforms_ready and "instagram" in platform_images:
-            if already_posted(conn, article["hash"], "instagram"):
-                print("  Instagram already posted (another pipeline) — skipping")
-            else:
-                ig_ok = post_to_instagram(captions["instagram"], platform_images["instagram"])
-                if ig_ok:
-                    queue_mark_posted("instagram")
-                    mark_posted(conn, article["hash"], article["title"], "instagram")
-                    ig_count += 1
-                    posted_platforms.append("instagram")
-                    print(f"  Instagram [IG {ig_count}/{IG_DAILY_LIMIT}] ✔")
-                else:
-                    print("  Instagram failed")
+            # Re-check platforms at start of each iteration
+            platforms_ready = _apply_limits(get_platforms_ready())
+            if not platforms_ready:
+                print(f"  No platforms ready — stopping loop at post {posts_this_run}")
+                break
 
-        if "telegram" in platforms_ready and "telegram" in platform_images:
-            if already_posted(conn, article["hash"], "telegram"):
-                print("  Telegram already posted (another pipeline) — skipping")
-            else:
-                tg_ok = post_to_telegram(captions["telegram"], platform_images["telegram"])
-                if tg_ok:
-                    queue_mark_posted("telegram")
-                    mark_posted(conn, article["hash"], article["title"], "telegram")
-                    tg_count += 1
-                    posted_platforms.append("telegram")
-                    print(f"  Telegram [TG {tg_count}/{TG_DAILY_LIMIT}] ✔")
-                else:
-                    print("  Telegram failed")
+            primary_intent = intent_result["intent"]["primary"]
+            print(f"\n  [{posts_this_run + 1}/{MAX_PER_RUN}] {primary_intent}: {article['title'][:60]}")
 
-        # Update topic memory only if at least one platform posted
-        if posted_platforms:
-            mark_intent_posted(primary_intent)
+            # ── IMAGE SEARCH ──────────────────────────────────────────────
+            image_url, best_clip, retry_count, best_image_path = search_with_clip_validation(
+                intent_result, article
+            )
+            print(f"    CLIP={best_clip:.3f} retries={retry_count}")
 
-        status = "success" if posted_platforms else "failed"
-        log_result(
-            article_url=article.get("url", ""),
-            intent=primary_intent,
-            clip_score=best_clip,
-            image_url=image_url or "",
-            platforms=posted_platforms,
-            status=status,
-            retry_count=retry_count,
-        )
-
-        if status == "failed":
-            send_error_email(
-                "Scheduled Post FAILED — no platform posted",
-                f"The scheduled pipeline selected an article but failed to post it.\n\n"
-                f"📰 Title: {article.get('title', '')[:150]}\n"
-                f"🏷️  Intent: {primary_intent}\n"
-                f"📊 CLIP score: {best_clip:.3f}\n\n"
-                f"Check GitHub Actions logs for the full error.",
+            # ── IMAGE COMPOSITION ─────────────────────────────────────────
+            captions       = intent_result["captions"]
+            image_headline = (captions.get("image_headline") or article["title"]).strip()
+            image_subtext  = captions.get("image_subtext", "")
+            platform_images = save_platform_images(
+                image_url,
+                primary_intent,
+                image_headline,
+                article.get("domain", "Unknown"),
+                article.get("published_at"),
+                image_path=best_image_path,
+                image_subtext=image_subtext,
             )
 
-        # Cleanup temp image files (always)
-        for path in platform_images.values():
+            if not platform_images:
+                print("    Image composition failed — skipping article")
+                continue
+
+            # ── POST ──────────────────────────────────────────────────────
+            posted_platforms = []
+
+            if "facebook" in platforms_ready and "facebook" in platform_images:
+                if already_posted(conn, article["hash"], "facebook"):
+                    print("    Facebook already posted (another pipeline) — skipping")
+                else:
+                    fb_ok = post_to_facebook(captions["facebook"], platform_images["facebook"])
+                    if fb_ok:
+                        queue_mark_posted("facebook")
+                        mark_posted(conn, article["hash"], article["title"], "facebook")
+                        fb_count += 1
+                        posted_platforms.append("facebook")
+                        print(f"    Facebook ✔ [FB {fb_count}/{FB_DAILY_LIMIT}]")
+                    else:
+                        print("    Facebook failed")
+
+            if "instagram" in platforms_ready and "instagram" in platform_images:
+                if already_posted(conn, article["hash"], "instagram"):
+                    print("    Instagram already posted (another pipeline) — skipping")
+                else:
+                    ig_ok = post_to_instagram(captions["instagram"], platform_images["instagram"])
+                    if ig_ok:
+                        queue_mark_posted("instagram")
+                        mark_posted(conn, article["hash"], article["title"], "instagram")
+                        ig_count += 1
+                        posted_platforms.append("instagram")
+                        print(f"    Instagram ✔ [IG {ig_count}/{IG_DAILY_LIMIT}]")
+                    else:
+                        print("    Instagram failed")
+
+            if "telegram" in platforms_ready and "telegram" in platform_images:
+                if already_posted(conn, article["hash"], "telegram"):
+                    print("    Telegram already posted (another pipeline) — skipping")
+                else:
+                    tg_ok = post_to_telegram(captions["telegram"], platform_images["telegram"])
+                    if tg_ok:
+                        queue_mark_posted("telegram")
+                        mark_posted(conn, article["hash"], article["title"], "telegram")
+                        tg_count += 1
+                        posted_platforms.append("telegram")
+                        print(f"    Telegram ✔ [TG {tg_count}/{TG_DAILY_LIMIT}]")
+                    else:
+                        print("    Telegram failed")
+
+            # ── LOG + TOPIC MEMORY ────────────────────────────────────────
+            if posted_platforms:
+                mark_intent_posted(primary_intent)
+                posts_this_run += 1
+
+            status = "success" if posted_platforms else "failed"
+            log_result(
+                article_url=article.get("url", ""),
+                intent=primary_intent,
+                clip_score=best_clip,
+                image_url=image_url or "",
+                platforms=posted_platforms,
+                status=status,
+                retry_count=retry_count,
+            )
+
+            if status == "failed":
+                send_error_email(
+                    "Scheduled Post FAILED — no platform posted",
+                    f"📰 Title: {article.get('title', '')[:150]}\n"
+                    f"🏷️  Intent: {primary_intent}\n"
+                    f"📊 CLIP: {best_clip:.3f}\n\n"
+                    f"Check GitHub Actions logs for the full error.",
+                )
+
+            # ── CLEANUP ───────────────────────────────────────────────────
+            for path in platform_images.values():
+                try:
+                    os.unlink(path)
+                except Exception:
+                    pass
             try:
-                os.unlink(path)
+                if best_image_path and os.path.exists(best_image_path):
+                    os.unlink(best_image_path)
             except Exception:
                 pass
-        try:
-            if best_image_path and os.path.exists(best_image_path):
-                os.unlink(best_image_path)
-        except Exception:
-            pass
 
-        # ── Summary ────────────────────────────────────────────────────────
+        # ── FINAL SUMMARY ──────────────────────────────────────────────────
         _sep("═")
-        print(f"STATUS:    {status.upper()}")
-        print(f"POSTED TO: {posted_platforms}")
-        print(f"INTENT:    {primary_intent}")
-        print(f"VIRALITY:  {article.get('virality_score', 'n/a')}/100")
-        print(f"CLIP:      {best_clip:.3f}")
+        print(f"RUN COMPLETE: {posts_this_run} post(s) published")
         print(f"FB COUNT:  {fb_count}/{FB_DAILY_LIMIT}")
         print(f"IG COUNT:  {ig_count}/{IG_DAILY_LIMIT}")
         print(f"TG COUNT:  {tg_count}/{TG_DAILY_LIMIT}")

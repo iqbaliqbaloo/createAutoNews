@@ -88,6 +88,20 @@ SCENE_TEMPLATES = {
         "quaternary": ["basketball three point shot crowd", "basketball fast break layup", "basketball pick roll play", "basketball timeout coach players"],
         "quinary":    ["nba playoffs basketball arena", "basketball slam dunk contest", "basketball foul free throw", "basketball draft pick celebrate"],
     },
+    "TECHNOLOGY": {
+        "primary":    ["artificial intelligence robot technology", "smartphone modern technology device", "tech innovation digital future"],
+        "secondary":  ["computer code software developer", "electric car technology innovation", "space rocket satellite technology"],
+        "tertiary":   ["cybersecurity hacker data network", "tech startup office team", "virtual reality headset digital"],
+        "quaternary": ["silicon chip processor technology", "cloud computing data center", "drone aerial tech innovation", "5g network tower technology"],
+        "quinary":    ["robot ai machine learning", "tech conference presentation stage", "apple google tech launch event", "quantum computer science lab"],
+    },
+    "ENTERTAINMENT": {
+        "primary":    ["bollywood film movie actor stage", "celebrity red carpet award ceremony", "concert stage music crowd performance"],
+        "secondary":  ["movie film production camera crew", "music artist singer stage lights", "award trophy ceremony celebration"],
+        "tertiary":   ["actor actress film premiere crowd", "music concert crowd fans", "entertainment industry glamour fashion"],
+        "quaternary": ["film set director camera action", "theatre performance stage audience", "television studio broadcast show", "celebrity interview press media"],
+        "quinary":    ["streaming platform digital entertainment", "music video production studio", "film award nomination announcement", "celebrity couple fashion event"],
+    },
 }
 
 FALLBACK_KEYWORDS = {
@@ -103,6 +117,8 @@ FALLBACK_KEYWORDS = {
     "F1":               ["formula 1 race"],
     "BOXING":           ["boxing fight"],
     "BASKETBALL":       ["basketball court"],
+    "TECHNOLOGY":       ["technology innovation"],
+    "ENTERTAINMENT":    ["entertainment celebrity"],
 }
 
 # Intent-specific broad fallbacks — used instead of generic "city crowd"
@@ -120,6 +136,8 @@ BROAD_FALLBACKS = {
     "F1":               ["formula 1 racing track", "grand prix race circuit", "racing car motorsport"],
     "BOXING":           ["boxing ring match fighters", "boxing bout punch gloves", "boxing arena crowd"],
     "BASKETBALL":       ["basketball court nba game", "basketball players dunk", "basketball match arena"],
+    "TECHNOLOGY":       ["artificial intelligence technology", "tech innovation digital future", "smartphone modern technology"],
+    "ENTERTAINMENT":    ["bollywood celebrity entertainment", "concert stage music crowd", "award ceremony red carpet"],
 }
 
 # Prepended to article-extracted keywords so Pixabay gets topic context
@@ -136,6 +154,8 @@ INTENT_CONTEXT_PREFIX = {
     "F1":               "formula 1 race",
     "BOXING":           "boxing fight",
     "BASKETBALL":       "basketball game",
+    "TECHNOLOGY":       "technology innovation digital",
+    "ENTERTAINMENT":    "entertainment celebrity bollywood",
 }
 
 # Words that add no search value when extracted from a headline

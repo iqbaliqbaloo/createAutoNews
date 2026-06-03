@@ -135,6 +135,31 @@ def get_best_intent(articles_with_intents):
     )
 
 
+def get_ordered_intents(articles_with_intents):
+    """
+    Return all (article, intent_result) pairs sorted by posting priority:
+      1. Not on cooldown AND diverse (different from last posted intent)
+      2. Not on cooldown (repeat allowed)
+      3. On cooldown — sorted by lowest remaining time
+    Used by the multi-post loop in main.py.
+    """
+    memory      = _load()
+    last_intent = get_last_posted_intent(memory)
+
+    def _priority(pair):
+        primary    = pair[1].get("intent", {}).get("primary", "")
+        on_cd      = is_on_cooldown(primary, memory)
+        is_repeat  = (primary == last_intent)
+        remaining  = cooldown_remaining(primary, memory)
+        if not on_cd and not is_repeat:
+            return (0, remaining)
+        if not on_cd:
+            return (1, remaining)
+        return (2, remaining)
+
+    return sorted(articles_with_intents, key=_priority)
+
+
 def mark_intent_posted(intent):
     """Record that this intent was just posted."""
     memory = _load()

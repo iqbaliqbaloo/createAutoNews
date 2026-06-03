@@ -623,6 +623,10 @@ def run():
     # True trending: count unique domains per story cluster
     story_clusters = _build_story_clusters(articles)
 
+    # Open shared DB once for cross-pipeline title dedup
+    from db import init_db, title_already_posted as _db_title_check
+    _db_conn = init_db()
+
     processed = 0
     for article in articles:
         score = _breaking_score(article, story_clusters=story_clusters, first_seen_data=first_seen_data)
@@ -669,6 +673,11 @@ def run():
             _write_queue(article)
             continue
 
+        # Cross-pipeline check — skip if any pipeline already covered this story
+        if _db_title_check(_db_conn, article["title"]):
+            logger.info("  → already covered (shared DB) — skipping")
+            continue
+
         if _is_tracked_by_sports(article):
             logger.info("  → sports_tracker handling this match — skipping breaking post")
             continue
@@ -709,6 +718,7 @@ def run():
             processed += 1
             break   # one breaking story per 5-min run
 
+    _db_conn.close()
     _save_state(state)
     logger.info(f"Breaking detector done — processed {processed} posts")
 

@@ -417,7 +417,16 @@ def _post_sports_update(match, captions, headline_text, league, event_type="UPDA
     from pixabay_searcher  import search_with_clip_validation
     from image_composer    import save_platform_images, TAG_COLORS
     from publisher         import post_to_facebook, post_to_instagram, post_to_telegram
-    from db                import init_db, mark_posted, already_posted
+    from db                import init_db, mark_posted, already_posted, title_already_posted
+
+    # Cross-pipeline check — skip if any pipeline already covered this headline
+    _pre_conn = init_db()
+    try:
+        if title_already_posted(_pre_conn, headline_text):
+            logger.info(f"  Sports headline already covered (shared DB) — skipping: {headline_text[:60]}")
+            return []
+    finally:
+        _pre_conn.close()
 
     sport_key = "SPORTS_CRICKET" if "cricket" in match.get("type", "") else "SPORTS_FOOTBALL"
     tag_label, tag_color = LEAGUE_TAGS.get(league.upper(), ("SPORTS", None))

@@ -20,6 +20,8 @@ TAG_COLORS = {
     "ECONOMY":          (  5, 122,  85),
     "DISASTER":         (208,  56,   1),
     "SPORTS":           (108,  43, 217),
+    "TECHNOLOGY":       (  0, 172, 193),   # cyan-teal
+    "ENTERTAINMENT":    (156,  39, 176),   # rich purple
     "CRICKET":          (  0, 120,  70),
     "SPORTS_CRICKET":   (  0, 120,  70),
     "FOOTBALL":         (  5, 122,  85),
@@ -41,6 +43,8 @@ BADGE_LABELS = {
     "ECONOMY":          "ECONOMY",
     "DISASTER":         "DISASTER ALERT",
     "SPORTS":           "SPORTS",
+    "TECHNOLOGY":       "TECHNOLOGY",
+    "ENTERTAINMENT":    "ENTERTAINMENT",
     "CRICKET":          "CRICKET",
     "SPORTS_CRICKET":   "CRICKET",
     "FOOTBALL":         "FOOTBALL",

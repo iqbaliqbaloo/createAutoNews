@@ -51,3 +51,46 @@ def trending_context_string(articles: list) -> str:
     if not tags:
         return ""
     return "Currently trending topics across today's news: " + " ".join(tags)
+
+
+# ── Story cluster builder (used by main pipeline for source verification) ──
+
+_CLUSTER_STOP = {
+    "this", "that", "with", "from", "have", "been", "will", "were", "they",
+    "their", "says", "said", "also", "more", "after", "over", "just", "time",
+    "news", "world", "year", "first", "last", "most", "into", "when", "what",
+    "would", "could", "about", "which", "there", "where", "than", "some",
+    "report", "update", "today", "breaking", "latest",
+}
+
+
+def _story_sig(title: str) -> str:
+    """Extract 3-4 meaningful words as a story signature for clustering."""
+    words = re.findall(r'\b[a-z]{4,}\b', title.lower())
+    key   = [w for w in words if w not in _CLUSTER_STOP][:4]
+    return " ".join(key) if len(key) >= 2 else ""
+
+
+def build_story_clusters(articles: list) -> dict:
+    """
+    Return dict: article_hash → number of unique domains covering the same story.
+    Used by the main pipeline to verify multi-source coverage before posting.
+    """
+    from collections import defaultdict
+
+    sig_domains: dict = defaultdict(set)
+    sig_hashes:  dict = defaultdict(list)
+
+    for a in articles:
+        sig = _story_sig(a.get("title", ""))
+        if sig:
+            sig_domains[sig].add(a.get("domain", ""))
+            sig_hashes[sig].append(a.get("hash", ""))
+
+    clusters = {}
+    for sig, hashes in sig_hashes.items():
+        count = len(sig_domains[sig])
+        for h in hashes:
+            clusters[h] = count
+
+    return clusters
