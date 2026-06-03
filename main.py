@@ -47,7 +47,7 @@ from scheduler_queue import (
 # ── Step 12: Post + log ───────────────────────────────────────────────────
 from publisher import post_to_facebook, post_to_instagram, post_to_telegram, send_error_email
 from results_logger import log_result, best_hours
-from trend_detector import trending_context_string, build_story_clusters
+from trend_detector import trending_context_string
 
 # ── Config ────────────────────────────────────────────────────────────────
 PKT            = pytz.timezone("Asia/Karachi")
@@ -110,7 +110,7 @@ def run_pipeline():
         trusted = []
         for a in articles:
             trust = fake_news_score(a)
-            if trust >= 0.40:
+            if trust >= 0.80:
                 a["trust_score"] = trust
                 trusted.append(a)
             else:
@@ -158,36 +158,6 @@ def run_pipeline():
             print("All articles already posted.")
             return
 
-        # ── SOURCE VERIFICATION (tier-based) ──────────────────────────────
-        # Top-tier sources (trust ≥ 0.90): post with 1 source
-        # Mid-tier sources (0.80–0.89): need 2+ sources covering same story
-        # Lower-tier sources (< 0.80): need 3+ sources
-        _sep()
-        print("[STEP 4b] SOURCE VERIFICATION")
-        _sep()
-        story_clusters = build_story_clusters(articles)
-        verified = []
-        for a in fresh:
-            trust        = a.get("trust_score", 0.60)
-            cluster_size = story_clusters.get(a["hash"], 1)
-            if trust >= 0.90:
-                verified.append(a)   # Reuters, BBC etc — trust alone
-            elif trust >= 0.80:
-                if cluster_size >= 2:
-                    verified.append(a)
-                else:
-                    print(f"  HOLD (need 2nd source, trust={trust:.2f}): {a['title'][:65]}")
-            else:
-                if cluster_size >= 3:
-                    verified.append(a)
-                else:
-                    print(f"  HOLD (need 3rd source, trust={trust:.2f}): {a['title'][:65]}")
-        print(f"Verified: {len(verified)}/{len(fresh)}")
-        if not verified:
-            print("No verified stories — waiting for more source coverage.")
-            return
-        fresh = verified
-
         # ── VIRALITY RANKING ───────────────────────────────────────────────
         fresh = rank_by_virality(fresh)
         if fresh and "virality_score" not in fresh[0]:
@@ -228,6 +198,9 @@ def run_pipeline():
         print("[STEP 11] SCHEDULER QUEUE (pre-check)")
         _sep()
 
+        top_virality = max((a.get("virality_score", 0) for a in fresh), default=0)
+        has_high_virality = top_virality > 85
+
         def _apply_limits(pl):
             if fb_count >= FB_DAILY_LIMIT:
                 pl = [p for p in pl if p != "facebook"]
@@ -235,10 +208,13 @@ def run_pipeline():
                 pl = [p for p in pl if p != "instagram"]
             if tg_count >= TG_DAILY_LIMIT:
                 pl = [p for p in pl if p != "telegram"]
-            # Facebook quiet hours 12 AM–5 AM PKT
+            # Facebook quiet hours 12 AM–5 AM PKT — bypassed for high-virality stories
             if FB_QUIET_START <= datetime.now(PKT).hour < FB_QUIET_END:
-                pl = [p for p in pl if p != "facebook"]
-                print(f"  Facebook quiet hours ({FB_QUIET_START}AM–{FB_QUIET_END}AM PKT) — skipping FB")
+                if has_high_virality:
+                    print(f"  High-virality ({top_virality}) — bypassing FB quiet hours in pre-check")
+                else:
+                    pl = [p for p in pl if p != "facebook"]
+                    print(f"  Facebook quiet hours ({FB_QUIET_START}AM–{FB_QUIET_END}AM PKT) — skipping FB")
             return pl
 
         platforms_ready = _apply_limits(get_platforms_ready())
@@ -269,8 +245,9 @@ def run_pipeline():
         posts_this_run = 0
         _ALL_PLATFORMS = ["facebook", "instagram", "telegram"]
 
-        def _inrun_platforms():
-            """Within a run — skip cooldowns, only check daily limits + quiet hours."""
+        def _inrun_platforms(virality=0):
+            """Within a run — skip cooldowns, only check daily limits + quiet hours.
+            High-virality articles (score > 85) bypass FB quiet hours."""
             pl = list(_ALL_PLATFORMS)
             if fb_count >= FB_DAILY_LIMIT:
                 pl = [p for p in pl if p != "facebook"]
@@ -279,7 +256,10 @@ def run_pipeline():
             if tg_count >= TG_DAILY_LIMIT:
                 pl = [p for p in pl if p != "telegram"]
             if FB_QUIET_START <= datetime.now(PKT).hour < FB_QUIET_END:
-                pl = [p for p in pl if p != "facebook"]
+                if virality > 85:
+                    print(f"  High-virality ({virality}) — bypassing FB quiet hours")
+                else:
+                    pl = [p for p in pl if p != "facebook"]
             return pl
 
         for article, intent_result in ordered:
@@ -287,7 +267,7 @@ def run_pipeline():
                 break
 
             # Inside loop: only check limits + quiet hours — NOT cooldowns
-            platforms_ready = _inrun_platforms()
+            platforms_ready = _inrun_platforms(virality=article.get("virality_score", 0))
             if not platforms_ready:
                 print(f"  No platforms available — stopping loop at post {posts_this_run}")
                 break
