@@ -360,23 +360,10 @@ def compose_image(image_url, platform, intent, headline, source_name,
             draw.text((pad,     text_y),     sline, font=subtext_font, fill=(220, 220, 230))
             text_y += subtext_step
 
-    # 7. Rounded corners ──────────────────────────────────────────────────
-    corner_r = cfg.get("corner_r", 28)
-    r_mask   = Image.new("L", (W, H), 0)
-    r_draw   = ImageDraw.Draw(r_mask)
-    r_draw.rounded_rectangle([0, 0, W - 1, H - 1], radius=corner_r, fill=255)
-    rgba  = photo.convert("RGBA")
-    rgba.putalpha(r_mask)
-    # Fill corner areas with tint colour so JPEG has no white corners
-    bg    = Image.new("RGBA", (W, H), (*tint, 255))
-    photo = Image.alpha_composite(bg, rgba).convert("RGB")
-    draw  = ImageDraw.Draw(photo)
-
-    # 8. Accent border with matching radius ───────────────────────────────
+    # 7. Accent border (sharp corners) ───────────────────────────────────
     bw = cfg.get("border_w", 5)
-    draw.rounded_rectangle(
+    draw.rectangle(
         [bw // 2, bw // 2, W - bw // 2 - 1, H - bw // 2 - 1],
-        radius=corner_r,
         outline=accent,
         width=bw,
     )

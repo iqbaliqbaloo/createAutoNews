@@ -359,6 +359,53 @@ def _fetch_og_image(article_url):
     return None, None
 
 
+# ── Google Custom Search Images ───────────────────────────────────────────
+
+def _search_google_images(query, num=10):
+    """
+    Google Custom Search API — searches the full web for images matching
+    the article title. Finds actual news photos, not generic stock images.
+    Requires GOOGLE_API_KEY + GOOGLE_CSE_ID env vars.
+    Free tier: 100 queries/day.
+    """
+    api_key = os.getenv("GOOGLE_API_KEY")
+    cse_id  = os.getenv("GOOGLE_CSE_ID")
+    if not api_key or not cse_id:
+        return []
+    try:
+        r = requests.get(
+            "https://www.googleapis.com/customsearch/v1",
+            params={
+                "key":        api_key,
+                "cx":         cse_id,
+                "q":          query,
+                "searchType": "image",
+                "num":        min(num, 10),   # API max per call is 10
+                "imgSize":    "large",
+                "safe":       "active",
+                "fileType":   "jpg",
+            },
+            timeout=12,
+        )
+        if r.status_code == 429:
+            logger.warning("Google Images daily quota reached")
+            return []
+        if r.status_code != 200:
+            logger.warning(f"Google Images API {r.status_code}: {r.text[:200]}")
+            return []
+        items = r.json().get("items", [])
+        urls  = []
+        for item in items:
+            url = item.get("link", "")
+            if url and any(url.lower().endswith(ext) for ext in (".jpg", ".jpeg", ".png")):
+                urls.append(url)
+        logger.info(f"Google Images: {len(urls)} results for '{query[:50]}'")
+        return urls
+    except Exception as e:
+        logger.warning(f"Google Images search failed: {e}")
+        return []
+
+
 # ── Image download ─────────────────────────────────────────────────────────
 
 def _download_tmp(url):
@@ -401,13 +448,43 @@ def search_with_clip_validation(intent_result, article=None):
     best_score = 0.0
     best_path  = None
 
-    # ── Try article's own og:image first — always the exact news photo ────
+    # ── Step 1: Article's own og:image — always the exact news photo ────────
     if article and article.get("url"):
         og_url, og_path = _fetch_og_image(article["url"])
         if og_url and og_path:
             print(f"  [og:image] Using article's own photo")
             _mark_image_used(og_url)
             return og_url, 1.0, 0, og_path
+
+    # ── Step 2: Google Custom Search — news-specific images by article title ─
+    article_title = (article or {}).get("title", "")
+    if article_title:
+        google_urls = _search_google_images(article_title)
+        if google_urls:
+            print(f"  [Google Images] {len(google_urls)} results")
+            for img_url in google_urls:
+                if _has_been_used(img_url):
+                    continue
+                path = _download_tmp(img_url)
+                if not path:
+                    continue
+                try:
+                    score = _clip_score(path, [article_title])
+                except Exception:
+                    _cleanup(path)
+                    continue
+                logger.info(f"Google CLIP {score:.4f} | {img_url}")
+                if score > best_score:
+                    _cleanup(best_path)
+                    best_score = score
+                    best_url   = img_url
+                    best_path  = path
+                else:
+                    _cleanup(path)
+                if best_score >= CLIP_ACCEPT_THRESHOLD:
+                    print(f"  [Google] Accepted (CLIP={best_score:.3f})")
+                    _mark_image_used(best_url)
+                    return best_url, best_score, 0, best_path
 
     loop = 0
     for loop in range(MAX_RETRY_LOOPS + 1):

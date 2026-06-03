@@ -267,15 +267,29 @@ def run_pipeline():
         print(f"[STEP 8–12] MULTI-POST LOOP (max {MAX_PER_RUN} per run)")
         _sep()
         posts_this_run = 0
+        _ALL_PLATFORMS = ["facebook", "instagram", "telegram"]
+
+        def _inrun_platforms():
+            """Within a run — skip cooldowns, only check daily limits + quiet hours."""
+            pl = list(_ALL_PLATFORMS)
+            if fb_count >= FB_DAILY_LIMIT:
+                pl = [p for p in pl if p != "facebook"]
+            if ig_count >= IG_DAILY_LIMIT:
+                pl = [p for p in pl if p != "instagram"]
+            if tg_count >= TG_DAILY_LIMIT:
+                pl = [p for p in pl if p != "telegram"]
+            if FB_QUIET_START <= datetime.now(PKT).hour < FB_QUIET_END:
+                pl = [p for p in pl if p != "facebook"]
+            return pl
 
         for article, intent_result in ordered:
             if posts_this_run >= MAX_PER_RUN:
                 break
 
-            # Re-check platforms at start of each iteration
-            platforms_ready = _apply_limits(get_platforms_ready())
+            # Inside loop: only check limits + quiet hours — NOT cooldowns
+            platforms_ready = _inrun_platforms()
             if not platforms_ready:
-                print(f"  No platforms ready — stopping loop at post {posts_this_run}")
+                print(f"  No platforms available — stopping loop at post {posts_this_run}")
                 break
 
             primary_intent = intent_result["intent"]["primary"]

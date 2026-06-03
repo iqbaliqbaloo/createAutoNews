@@ -170,35 +170,59 @@ _SKIP_WORDS = {
 }
 
 
-def _article_keywords(title, intent="POLITICS", max_words=3):
+def _article_keywords(title, intent="POLITICS", max_words=5):
     """
-    Extract article-specific keywords from the headline and prepend the
-    intent context prefix — so Pixabay always knows what topic we want.
+    Extract article-specific keywords from the headline — NO generic prefix.
+    Pure topic words give Pixabay the best chance of finding a relevant image.
 
-    Example: title="Pakistan wins first ODI", intent="SPORTS_CRICKET"
-             → "cricket match pakistan wins odi"
+    Example: title="Israel Lebanon talks opens after strikes"
+             → "israel lebanon talks opens strikes"  (specific to THIS story)
     """
     if not title:
         return []
     clean = re.sub(r"[^a-zA-Z0-9\s]", " ", title.lower())
     words = [w for w in clean.split() if w not in _SKIP_WORDS and len(w) > 2]
-    prefix = INTENT_CONTEXT_PREFIX.get(intent, "news")
     if not words:
-        return [prefix]
-    article_phrase = " ".join(words[:max_words])
-    return [f"{prefix} {article_phrase}"]
+        # Fallback to intent prefix only if title has no usable words
+        return [INTENT_CONTEXT_PREFIX.get(intent, "news")]
+    return [" ".join(words[:max_words])]
+
+
+def _extract_article_words(title, max_words=3):
+    """Extract 3 meaningful words from article title for use in retry loops."""
+    if not title:
+        return ""
+    clean = re.sub(r"[^a-zA-Z0-9\s]", " ", title.lower())
+    words = [w for w in clean.split() if w not in _SKIP_WORDS and len(w) > 3]
+    return " ".join(words[:max_words])
+
+
+def _mix(article_words, template_kws):
+    """
+    Prepend article-specific words to the first template keyword so every
+    article gets unique search terms even in fallback loops.
+    e.g. article_words="israel lebanon" + "conflict zone destruction rubble"
+         → ["israel lebanon conflict zone", "war damage buildings", ...]
+    """
+    if not article_words or not template_kws:
+        return list(template_kws)
+    mixed = [f"{article_words} {template_kws[0]}"] + list(template_kws[1:])
+    return mixed
 
 
 def get_search_keywords(intent_result, article=None, retry_loop=0):
     """
     Return a list of Pixabay search terms based on intent and retry loop.
+    Article-specific words are injected into ALL loops so every story gets
+    unique image searches even when the first loop fails CLIP validation.
 
     retry_loop:
-      0 → article-specific keywords prefixed with intent context (unique per story)
-      1 → intent primary template keywords
-      2 → intent secondary template keywords
-      3 → intent tertiary template keywords
-      4+ → generic fallback keyword for this intent
+      0 → article-specific keywords prefixed with intent context
+      1 → article words + intent secondary template
+      2 → article words + intent tertiary template
+      3 → article words + quaternary template
+      4 → article words + quinary template
+      5+ → generic fallback
     """
     primary   = intent_result["intent"]["primary"]
     secondary = intent_result["intent"].get("secondary", primary)
@@ -211,12 +235,14 @@ def get_search_keywords(intent_result, article=None, retry_loop=0):
     tmpl_primary   = SCENE_TEMPLATES.get(primary,   SCENE_TEMPLATES["POLITICS"])
     tmpl_secondary = SCENE_TEMPLATES.get(secondary, tmpl_primary)
 
+    # Extract article-specific words — used in ALL loops
+    art_words = _extract_article_words(article.get("title", "") if article else "")
+
     if retry_loop == 0:
         if article:
             kws = _article_keywords(article.get("title", ""), intent=primary)
             if kws:
                 return kws
-        # No article — fall straight to intent primary
         if not ambiguous and primary_score >= 0.50:
             return list(tmpl_primary["primary"])
         merged = list(tmpl_primary["primary"]) + list(tmpl_secondary["primary"])
@@ -228,16 +254,16 @@ def get_search_keywords(intent_result, article=None, retry_loop=0):
         return out[:4]
 
     elif retry_loop == 1:
-        return list(tmpl_primary["secondary"])
+        return _mix(art_words, tmpl_primary["secondary"])
 
     elif retry_loop == 2:
-        return list(tmpl_primary["tertiary"])
+        return _mix(art_words, tmpl_primary["tertiary"])
 
     elif retry_loop == 3:
-        return list(tmpl_primary.get("quaternary", tmpl_primary["tertiary"]))
+        return _mix(art_words, tmpl_primary.get("quaternary", tmpl_primary["tertiary"]))
 
     elif retry_loop == 4:
-        return list(tmpl_primary.get("quinary", tmpl_primary["tertiary"]))
+        return _mix(art_words, tmpl_primary.get("quinary", tmpl_primary["tertiary"]))
 
     else:
         return list(FALLBACK_KEYWORDS.get(primary, ["news"]))
