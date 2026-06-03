@@ -5,64 +5,88 @@ import re
 
 SCENE_TEMPLATES = {
     "WAR": {
-        "primary":   ["battlefield military soldiers", "troops armed forces combat", "tanks military operation", "soldiers weapons war zone"],
-        "secondary": ["conflict zone destruction rubble", "war damage buildings", "military vehicles convoy", "armed conflict zone"],
-        "tertiary":  ["war refugees displaced crisis", "military base operation", "defense forces troops"],
+        "primary":    ["battlefield military soldiers", "troops armed forces combat", "tanks military operation", "soldiers weapons war zone"],
+        "secondary":  ["conflict zone destruction rubble", "war damage buildings", "military vehicles convoy", "armed conflict zone"],
+        "tertiary":   ["war refugees displaced crisis", "military base operation", "defense forces troops"],
+        "quaternary": ["warplane jet fighter military", "navy warship sea military", "sniper rifle military operation", "army camp soldiers tent"],
+        "quinary":    ["military helicopter gunship", "bomb explosion fire war", "frontline trench soldiers combat", "missile launch military strike"],
     },
     "POLITICS": {
-        "primary":   ["press conference podium microphone", "parliament building government", "leader speech podium politics"],
-        "secondary": ["political summit meeting leaders", "voting election ballot box", "government officials delegation"],
-        "tertiary":  ["capitol building government hall", "diplomat handshake agreement", "political rally crowd"],
+        "primary":    ["press conference podium microphone", "parliament building government", "leader speech podium politics"],
+        "secondary":  ["political summit meeting leaders", "voting election ballot box", "government officials delegation"],
+        "tertiary":   ["capitol building government hall", "diplomat handshake agreement", "political rally crowd"],
+        "quaternary": ["united nations assembly hall", "president oval office meeting", "senate congress chamber hall", "prime minister speech crowd"],
+        "quinary":    ["ambassador foreign minister meeting", "election campaign rally crowd", "government protest demonstration", "political debate stage microphone"],
     },
     "ECONOMY": {
-        "primary":   ["stock market trading screen numbers", "financial charts graphs economy", "currency exchange rates finance"],
-        "secondary": ["banking finance skyscraper building", "economic data analysis business", "wall street traders floor"],
-        "tertiary":  ["business meeting corporate boardroom", "money finance coins bills", "economic growth chart finance"],
+        "primary":    ["stock market trading screen numbers", "financial charts graphs economy", "currency exchange rates finance"],
+        "secondary":  ["banking finance skyscraper building", "economic data analysis business", "wall street traders floor"],
+        "tertiary":   ["business meeting corporate boardroom", "money finance coins bills", "economic growth chart finance"],
+        "quaternary": ["oil refinery energy industry", "cargo ship port trade", "factory workers manufacturing industry", "imf world bank finance"],
+        "quinary":    ["inflation prices grocery shopping", "unemployment job seekers office", "crypto bitcoin digital currency", "housing market real estate"],
     },
     "DISASTER": {
-        "primary":   ["flood rescue emergency water", "earthquake destruction rubble collapse", "disaster emergency response team"],
-        "secondary": ["rescue teams search rubble", "destroyed buildings collapse aftermath", "humanitarian aid relief workers"],
-        "tertiary":  ["emergency helicopter rescue operation", "natural disaster aftermath destruction", "crisis response firefighters"],
+        "primary":    ["flood rescue emergency water", "earthquake destruction rubble collapse", "disaster emergency response team"],
+        "secondary":  ["rescue teams search rubble", "destroyed buildings collapse aftermath", "humanitarian aid relief workers"],
+        "tertiary":   ["emergency helicopter rescue operation", "natural disaster aftermath destruction", "crisis response firefighters"],
+        "quaternary": ["wildfire forest burning flames", "cyclone hurricane storm damage", "landslide mudslide destruction", "tsunami wave coastal damage"],
+        "quinary":    ["volcano eruption lava flow", "drought cracked earth famine", "avalanche snow mountain rescue", "chemical spill hazmat emergency"],
     },
     "SPORTS": {
-        "primary":   ["stadium crowd sports match action", "sports athletes competition field", "sports fans cheering stadium"],
-        "secondary": ["trophy ceremony celebration winners", "athletic competition race track", "team sport players match"],
-        "tertiary":  ["sports fans crowd cheering", "championship victory celebration", "olympic sports athletes"],
+        "primary":    ["stadium crowd sports match action", "sports athletes competition field", "sports fans cheering stadium"],
+        "secondary":  ["trophy ceremony celebration winners", "athletic competition race track", "team sport players match"],
+        "tertiary":   ["sports fans crowd cheering", "championship victory celebration", "olympic sports athletes"],
+        "quaternary": ["sports press conference podium", "athlete training practice field", "sports medal ceremony podium", "team locker room celebration"],
+        "quinary":    ["sports injury medical field", "referee decision controversial sport", "sports transfer signing deal", "young athlete training sports"],
     },
     "SPORTS_CRICKET": {
-        "primary":   ["cricket match stadium crowd players", "cricket bat ball pitch action", "cricket bowler batsman wicket"],
-        "secondary": ["cricket celebration wicket boundary", "cricket six four boundary shot", "cricket umpire field match"],
-        "tertiary":  ["cricket fans cheering stadium", "cricket trophy cup ceremony", "cricket team celebration"],
+        "primary":    ["cricket match stadium crowd players", "cricket bat ball pitch action", "cricket bowler batsman wicket"],
+        "secondary":  ["cricket celebration wicket boundary", "cricket six four boundary shot", "cricket umpire field match"],
+        "tertiary":   ["cricket fans cheering stadium", "cricket trophy cup ceremony", "cricket team celebration"],
+        "quaternary": ["cricket drs review decision umpire", "cricket opening batsman crease", "cricket fast bowler run up", "cricket fielding catch outfield"],
+        "quinary":    ["cricket test match white clothing", "cricket ipl t20 night match", "cricket world cup trophy", "cricket spin bowler delivery"],
     },
     "SPORTS_FOOTBALL": {
-        "primary":   ["football soccer match stadium crowd", "soccer goal celebration players", "football players action pitch"],
-        "secondary": ["football penalty kick goalkeeper", "football referee yellow card", "football trophy league champions"],
-        "tertiary":  ["football fans supporters stadium", "football pitch aerial view", "soccer team huddle"],
+        "primary":    ["football soccer match stadium crowd", "soccer goal celebration players", "football players action pitch"],
+        "secondary":  ["football penalty kick goalkeeper", "football referee yellow card", "football trophy league champions"],
+        "tertiary":   ["football fans supporters stadium", "football pitch aerial view", "soccer team huddle"],
+        "quaternary": ["football corner kick players", "football header aerial duel", "football tackle sliding pitch", "football manager touchline coaching"],
+        "quinary":    ["football champions league trophy", "football world cup celebration", "football free kick wall", "football transfer signing contract"],
     },
     "SPORTS_LIVE": {
-        "primary":   ["live sports action stadium crowd", "sports match crowd excitement", "athletes competition stadium"],
-        "secondary": ["sports celebration victory trophy", "sports fans cheering stadium", "championship final match"],
-        "tertiary":  ["stadium lights night match", "sports trophy award ceremony", "team sport final"],
+        "primary":    ["live sports action stadium crowd", "sports match crowd excitement", "athletes competition stadium"],
+        "secondary":  ["sports celebration victory trophy", "sports fans cheering stadium", "championship final match"],
+        "tertiary":   ["stadium lights night match", "sports trophy award ceremony", "team sport final"],
+        "quaternary": ["live score board scoreboard", "sports commentator broadcast booth", "sports tv camera crew pitch", "match official referee decision"],
+        "quinary":    ["stadium atmosphere flares fans", "substitution player bench sport", "injury time stoppage sport", "penalty shootout tension sport"],
     },
     "TENNIS": {
-        "primary":   ["tennis match court players action", "tennis player serve racket ball", "tennis grand slam tournament"],
-        "secondary": ["tennis racket ball court clay", "tennis tournament championship match", "tennis doubles singles players"],
-        "tertiary":  ["wimbledon tennis court grass", "tennis player victory celebration", "tennis crowd stadium"],
+        "primary":    ["tennis match court players action", "tennis player serve racket ball", "tennis grand slam tournament"],
+        "secondary":  ["tennis racket ball court clay", "tennis tournament championship match", "tennis doubles singles players"],
+        "tertiary":   ["wimbledon tennis court grass", "tennis player victory celebration", "tennis crowd stadium"],
+        "quaternary": ["tennis tiebreak decisive point", "tennis player backhand forehand", "tennis net approach volley", "tennis umpire chair court"],
+        "quinary":    ["us open tennis hard court", "french open clay court tennis", "australian open tennis night", "tennis player injury retirement"],
     },
     "F1": {
-        "primary":   ["formula 1 racing car track", "f1 grand prix race circuit", "formula one car speed race"],
-        "secondary": ["racing pit stop team mechanics", "formula one drivers podium", "race track circuit aerial"],
-        "tertiary":  ["motorsport competition car race", "racing championship trophy", "f1 crash race incident"],
+        "primary":    ["formula 1 racing car track", "f1 grand prix race circuit", "formula one car speed race"],
+        "secondary":  ["racing pit stop team mechanics", "formula one drivers podium", "race track circuit aerial"],
+        "tertiary":   ["motorsport competition car race", "racing championship trophy", "f1 crash race incident"],
+        "quaternary": ["formula 1 qualifying lap time", "f1 safety car track circuit", "racing driver helmet cockpit", "f1 grid start lights"],
+        "quinary":    ["monaco grand prix street circuit", "silverstone f1 race crowd", "f1 fastest lap champion", "racing car rear wing drs"],
     },
     "BOXING": {
-        "primary":   ["boxing match fight ring punch", "boxer punch knockout gloves", "boxing ring fighters crowd"],
-        "secondary": ["boxing championship belt bout", "mma ufc fighters cage", "boxing arena crowd fight"],
-        "tertiary":  ["boxing training athlete gloves", "combat sport fight martial arts", "boxing champion belt"],
+        "primary":    ["boxing match fight ring punch", "boxer punch knockout gloves", "boxing ring fighters crowd"],
+        "secondary":  ["boxing championship belt bout", "mma ufc fighters cage", "boxing arena crowd fight"],
+        "tertiary":   ["boxing training athlete gloves", "combat sport fight martial arts", "boxing champion belt"],
+        "quaternary": ["boxing weigh in face off", "boxing corner cut man trainer", "knockout punch boxing crowd", "boxing referee count knockdown"],
+        "quinary":    ["heavyweight boxing championship bout", "boxing judges scorecard decision", "boxer entrance ring walk", "boxing sparring training gym"],
     },
     "BASKETBALL": {
-        "primary":   ["basketball nba game court players", "basketball player dunk shot", "basketball arena crowd match"],
-        "secondary": ["basketball shoot hoop net", "basketball game action players", "basketball championship final"],
-        "tertiary":  ["basketball team sport players", "basketball arena fans cheering", "basketball trophy victory"],
+        "primary":    ["basketball nba game court players", "basketball player dunk shot", "basketball arena crowd match"],
+        "secondary":  ["basketball shoot hoop net", "basketball game action players", "basketball championship final"],
+        "tertiary":   ["basketball team sport players", "basketball arena fans cheering", "basketball trophy victory"],
+        "quaternary": ["basketball three point shot crowd", "basketball fast break layup", "basketball pick roll play", "basketball timeout coach players"],
+        "quinary":    ["nba playoffs basketball arena", "basketball slam dunk contest", "basketball foul free throw", "basketball draft pick celebrate"],
     },
 }
 
@@ -190,13 +214,10 @@ def get_search_keywords(intent_result, article=None, retry_loop=0):
         return list(tmpl_primary["tertiary"])
 
     elif retry_loop == 3:
-        merged = list(tmpl_primary["tertiary"]) + list(tmpl_secondary["tertiary"])
-        seen, out = set(), []
-        for kw in merged:
-            if kw not in seen:
-                seen.add(kw)
-                out.append(kw)
-        return out[:4]
+        return list(tmpl_primary.get("quaternary", tmpl_primary["tertiary"]))
+
+    elif retry_loop == 4:
+        return list(tmpl_primary.get("quinary", tmpl_primary["tertiary"]))
 
     else:
         return list(FALLBACK_KEYWORDS.get(primary, ["news"]))

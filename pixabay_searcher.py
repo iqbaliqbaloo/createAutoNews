@@ -14,7 +14,7 @@ logger = logging.getLogger(__name__)
 
 CLIP_ACCEPT_THRESHOLD    = 0.27
 MAX_RETRY_LOOPS          = 3
-PIXABAY_RESULTS_PER_CALL = 5
+PIXABAY_RESULTS_PER_CALL = 15
 
 DATA_DIR            = "data"
 IMAGE_CACHE_FILE    = os.path.join(DATA_DIR, "image_cache.json")
@@ -170,6 +170,22 @@ def _increment_pixabay_count():
     _save_rate(data)
 
 
+def _get_next_page(cache_key):
+    """
+    Rotate through Pixabay pages 1-5 for each keyword so consecutive searches
+    return different images — never stuck on the same top-15 results.
+    Page counter is stored in rate_limit.json and persists across runs.
+    """
+    data     = _load_rate()
+    counters = data.get("page_counters", {})
+    current  = counters.get(cache_key, 0)
+    next_pg  = (current % 5) + 1   # cycles 1→2→3→4→5→1→2...
+    counters[cache_key] = next_pg
+    data["page_counters"] = counters
+    _save_rate(data)
+    return next_pg
+
+
 # ── CLIP scoring ───────────────────────────────────────────────────────────
 
 def _clip_score(image_path, scene_keywords):
@@ -179,7 +195,7 @@ def _clip_score(image_path, scene_keywords):
 
 # ── Pixabay search ─────────────────────────────────────────────────────────
 
-def _search_pixabay_raw(keywords):
+def _search_pixabay_raw(keywords, page=1):
     """Call Pixabay API (no cache, no rate-gate)."""
     api_key = os.getenv("PIXABAY_API_KEY")
     if not api_key:
@@ -200,6 +216,7 @@ def _search_pixabay_raw(keywords):
                     "q":           phrase,
                     "image_type":  "photo",
                     "per_page":    PIXABAY_RESULTS_PER_CALL,
+                    "page":        page,
                     "safesearch":  "true",
                     "orientation": "horizontal",
                     "min_width":   1000,
@@ -274,27 +291,32 @@ def _local_library_path(intent):
 
 def _search_images(keywords, cache_key):
     """
-    1. Try image cache (6-hour TTL)
-    2. If Pixabay under limit → call Pixabay, store in cache
-    3. If Pixabay at limit → call Pexels, store in cache
+    1. Get rotating page number for this keyword (cycles 1-5)
+    2. Try image cache for this (keyword, page) combo (6-hour TTL)
+    3. If Pixabay under limit → call Pixabay with that page, store in cache
+    4. If Pixabay at limit → call Pexels, store in cache
     Returns list of URLs (possibly empty).
+    Each run uses a different Pixabay page so images never repeat.
     """
-    cached = _get_cached_urls(cache_key)
+    page           = _get_next_page(cache_key)
+    paged_key      = f"{cache_key}_p{page}"
+
+    cached = _get_cached_urls(paged_key)
     if cached:
         return cached
 
     if _pixabay_calls_this_hour() < PIXABAY_HOURLY_LIMIT:
         _increment_pixabay_count()
-        urls = _search_pixabay_raw(keywords)
-        source = "Pixabay"
+        urls   = _search_pixabay_raw(keywords, page=page)
+        source = f"Pixabay(p{page})"
     else:
         logger.info("Pixabay hourly limit reached — switching to Pexels")
-        urls = _search_pexels(keywords)
+        urls   = _search_pexels(keywords)
         source = "Pexels"
 
     if urls:
-        logger.info(f"{source} returned {len(urls)} URLs for key={cache_key}")
-        _store_cached_urls(cache_key, urls)
+        logger.info(f"{source} returned {len(urls)} URLs for key={paged_key}")
+        _store_cached_urls(paged_key, urls)
     return urls
 
 
