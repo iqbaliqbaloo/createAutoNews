@@ -60,7 +60,7 @@ def clean_text(text):
 
 # ---------------- FRESHNESS ---------------- #
 
-def is_fresh(entry, hours=2):
+def is_fresh(entry, hours=1):
     if not hasattr(entry, "published_parsed") or not entry.published_parsed:
         return True
     try:

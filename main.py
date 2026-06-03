@@ -291,37 +291,46 @@ def run_pipeline():
         posted_platforms = []
 
         if "facebook" in platforms_ready and "facebook" in platform_images:
-            fb_ok = post_to_facebook(captions["facebook"], platform_images["facebook"])
-            if fb_ok:
-                queue_mark_posted("facebook")
-                mark_posted(conn, article["hash"], article["title"], "facebook")
-                fb_count += 1
-                posted_platforms.append("facebook")
-                print(f"  Facebook [FB {fb_count}/{FB_DAILY_LIMIT}] ✔")
+            if already_posted(conn, article["hash"], "facebook"):
+                print("  Facebook already posted (another pipeline) — skipping")
             else:
-                print("  Facebook failed")
+                fb_ok = post_to_facebook(captions["facebook"], platform_images["facebook"])
+                if fb_ok:
+                    queue_mark_posted("facebook")
+                    mark_posted(conn, article["hash"], article["title"], "facebook")
+                    fb_count += 1
+                    posted_platforms.append("facebook")
+                    print(f"  Facebook [FB {fb_count}/{FB_DAILY_LIMIT}] ✔")
+                else:
+                    print("  Facebook failed")
 
         if "instagram" in platforms_ready and "instagram" in platform_images:
-            ig_ok = post_to_instagram(captions["instagram"], platform_images["instagram"])
-            if ig_ok:
-                queue_mark_posted("instagram")
-                mark_posted(conn, article["hash"], article["title"], "instagram")
-                ig_count += 1
-                posted_platforms.append("instagram")
-                print(f"  Instagram [IG {ig_count}/{IG_DAILY_LIMIT}] ✔")
+            if already_posted(conn, article["hash"], "instagram"):
+                print("  Instagram already posted (another pipeline) — skipping")
             else:
-                print("  Instagram failed")
+                ig_ok = post_to_instagram(captions["instagram"], platform_images["instagram"])
+                if ig_ok:
+                    queue_mark_posted("instagram")
+                    mark_posted(conn, article["hash"], article["title"], "instagram")
+                    ig_count += 1
+                    posted_platforms.append("instagram")
+                    print(f"  Instagram [IG {ig_count}/{IG_DAILY_LIMIT}] ✔")
+                else:
+                    print("  Instagram failed")
 
         if "telegram" in platforms_ready and "telegram" in platform_images:
-            tg_ok = post_to_telegram(captions["telegram"], platform_images["telegram"])
-            if tg_ok:
-                queue_mark_posted("telegram")
-                mark_posted(conn, article["hash"], article["title"], "telegram")
-                tg_count += 1
-                posted_platforms.append("telegram")
-                print(f"  Telegram [TG {tg_count}/{TG_DAILY_LIMIT}] ✔")
+            if already_posted(conn, article["hash"], "telegram"):
+                print("  Telegram already posted (another pipeline) — skipping")
             else:
-                print("  Telegram failed")
+                tg_ok = post_to_telegram(captions["telegram"], platform_images["telegram"])
+                if tg_ok:
+                    queue_mark_posted("telegram")
+                    mark_posted(conn, article["hash"], article["title"], "telegram")
+                    tg_count += 1
+                    posted_platforms.append("telegram")
+                    print(f"  Telegram [TG {tg_count}/{TG_DAILY_LIMIT}] ✔")
+                else:
+                    print("  Telegram failed")
 
         # Update topic memory only if at least one platform posted
         if posted_platforms:

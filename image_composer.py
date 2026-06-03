@@ -62,42 +62,42 @@ BADGE_LABELS = {
 PLATFORMS = {
     "facebook": {
         "canvas":        (1080, 1350),
-        "overlay_start": 0.55,   # dark overlay begins here
-        "gradient_h":    180,    # fade zone above overlay
-        "badge_fs":      32,
-        "headline_fs":   58,
+        "overlay_start": 0.58,   # dark overlay begins here
+        "gradient_h":    160,    # fade zone above overlay
+        "badge_fs":      30,
+        "headline_fs":   52,
         "logo_fs":       22,
         "logo_pad_x":    16,
         "logo_pad_y":    10,
         "pad":           44,
-        "line_gap":      20,
-        "badge_y_frac":  0.63,   # badge vertical position (fraction of H)
+        "line_gap":      16,
+        "badge_y_frac":  0.66,   # badge vertical position (fraction of H)
     },
     "instagram": {
         "canvas":        (1080, 1350),
-        "overlay_start": 0.55,
-        "gradient_h":    180,
-        "badge_fs":      32,
-        "headline_fs":   58,
+        "overlay_start": 0.58,
+        "gradient_h":    160,
+        "badge_fs":      30,
+        "headline_fs":   52,
         "logo_fs":       22,
         "logo_pad_x":    16,
         "logo_pad_y":    10,
         "pad":           44,
-        "line_gap":      20,
-        "badge_y_frac":  0.63,
+        "line_gap":      16,
+        "badge_y_frac":  0.66,
     },
     "telegram": {
         "canvas":        (1280, 720),
-        "overlay_start": 0.50,
-        "gradient_h":    130,
-        "badge_fs":      26,
-        "headline_fs":   46,
+        "overlay_start": 0.52,
+        "gradient_h":    120,
+        "badge_fs":      24,
+        "headline_fs":   40,
         "logo_fs":       18,
         "logo_pad_x":    14,
         "logo_pad_y":    8,
         "pad":           38,
-        "line_gap":      14,
-        "badge_y_frac":  0.58,
+        "line_gap":      12,
+        "badge_y_frac":  0.60,
     },
 }
 
@@ -306,7 +306,7 @@ def compose_image(image_url, platform, intent, headline, source_name,
     # 5. Bold white headline ───────────────────────────────────────────────
     headline_font = _load_font(cfg["headline_fs"], bold=True)
     max_text_w    = W - pad * 2
-    lines         = _wrap_headline(draw, headline, headline_font, max_text_w, max_lines=3)
+    lines         = _wrap_headline(draw, headline, headline_font, max_text_w, max_lines=2)
     line_step     = cfg["headline_fs"] + cfg["line_gap"]
     text_y        = badge_top + badge_h + 22
 

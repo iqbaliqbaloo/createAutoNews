@@ -180,37 +180,37 @@ RULES — Intent:
 - Set ambiguous=true if top score < 0.50
 - primary = highest-score label; secondary = second-highest
 
-RULES — Image Headline (overlay text printed on the image, max 8 words):
-- Write 5-8 plain words that state the single most important fact
-- Simple words — write as if telling a friend what happened
+RULES — Image Headline (overlay text printed on the image, max 6 words):
+- Write exactly 4-6 plain words — the single most important fact
+- Use the simplest words possible (Grade 5 reading level)
 - No emojis, no hashtags, no punctuation at the end
-- Good examples: "Storm Delays Gujarat Titans Arrival in Ahmedabad" / "Trump Cancels US 250th Anniversary Concerts"
-- Bad examples: anything over 8 words, anything with hashtags or emojis
+- Good examples: "Storm Delays Gujarat Titans Match" / "Trump Cancels Anniversary Concerts"
+- Bad examples: anything over 6 words, complex words, hashtags or emojis
 
-RULES — Facebook caption (max 480 chars):
-GOAL: Easy to read, easy to share. Write in simple plain English — like a knowledgeable friend explaining the news.
+RULES — Facebook caption (max 300 chars before hashtags):
+GOAL: Write like texting a friend — short, simple, easy to understand. Max 10 words per sentence.
 - Line 1 (TOPIC LABEL): Start with:
   WAR → "⚔️ WAR & CONFLICT |"  POLITICS → "🏛️ POLITICS |"
   ECONOMY → "📈 ECONOMY |"       DISASTER → "🚨 DISASTER ALERT |"  SPORTS → "🏆 SPORTS |"
-  Then write one clear sentence about what happened. Example: "🏆 SPORTS | The match was delayed because of a sudden storm."
-- Lines 2-3: 2 short, simple sentences. Use easy words. Say who, what, where.
+  Then write ONE simple sentence (max 10 words) about what happened. Example: "🏆 SPORTS | Gujarat Titans flight was delayed by a storm."
+- Lines 2-3: 1-2 short sentences. Max 10 words each. Simple words only.
 - Final line: 5-8 hashtags including #VisionaryMinds #BreakingNews and topic-specific tags from: {intent_tags}
 - No URLs. Max 2 emojis.
 
-RULES — Instagram caption (max 300 visible chars + hashtags):
-- Write in simple, easy-to-understand English. Short sentences. Clear words.
-- Line 1: Topic label + one clear sentence about what happened
-  e.g. "🏆 SPORTS 🔴 Gujarat Titans flight was delayed due to a storm."
-- Lines 2-3: 2 short simple facts on separate lines
+RULES — Instagram caption (max 200 visible chars + hashtags):
+- Write like a text message — very short, very simple. Max 8 words per sentence.
+- Line 1: Topic label + one simple sentence about what happened
+  e.g. "🏆 SPORTS 🔴 Gujarat Titans flight delayed by storm."
+- Line 2: One short simple fact (max 8 words)
 - Add: "Follow @VisionaryMinds for live updates 👇"
 - Do NOT include any URL or link
 - 25-30 hashtags including #VisionaryMinds #BreakingNews #WorldNews #News #CurrentAffairs #Trending #Viral #MustSee #TopStory
 - Add location hashtags if a country/city is mentioned
 - Add topic-specific tags from: {intent_tags}
 
-RULES — Telegram caption (max 800 chars):
-- Start: "🔴 **BREAKING: {{one sentence summary}}**"
-- 3-4 factual sentences in simple plain English. Include who/what/where/when.
+RULES — Telegram caption (max 500 chars):
+- Start: "🔴 **BREAKING: {{one simple sentence, max 12 words}}**"
+- 2-3 short factual sentences. Max 10 words each. Simple plain English only.
 - End with 3-5 hashtags including #VisionaryMinds #BreakingNews
 - Do NOT include any URL or link
 - Use **bold** for the opening headline only
@@ -252,11 +252,11 @@ Brand tags always include: #VisionaryMinds #VMUpdates
 
         # ── Length optimisation ────────────────────────────────────────────
         if captions.get("facebook"):
-            captions["facebook"] = optimize_length(captions["facebook"], max_words=80)
+            captions["facebook"] = optimize_length(captions["facebook"], max_words=55)
         if captions.get("instagram"):
-            captions["instagram"] = optimize_length(captions["instagram"], max_words=60)
+            captions["instagram"] = optimize_length(captions["instagram"], max_words=40)
         if captions.get("telegram"):
-            captions["telegram"] = optimize_length(captions["telegram"], max_words=120)
+            captions["telegram"] = optimize_length(captions["telegram"], max_words=70)
 
         # ── Guaranteed hashtag + CTA footer (never rely on LLM alone) ─────
         primary = intent_data.get("primary", "POLITICS")
@@ -268,8 +268,8 @@ Brand tags always include: #VisionaryMinds #VMUpdates
         # ── Enforce image headline 8-word limit ───────────────────────────
         if captions.get("image_headline"):
             words = captions["image_headline"].split()
-            if len(words) > 8:
-                captions["image_headline"] = " ".join(words[:8])
+            if len(words) > 6:
+                captions["image_headline"] = " ".join(words[:6])
 
         return {"intent": intent_data, "captions": captions}
 

@@ -25,8 +25,9 @@ logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s")
 logger = logging.getLogger(__name__)
 
 PKT            = pytz.timezone("Asia/Karachi")
-DATA_DIR       = "data"
-STATE_FILE     = os.path.join(DATA_DIR, "breaking_state.json")
+DATA_DIR         = "data"
+STATE_FILE       = os.path.join(DATA_DIR, "breaking_state.json")
+FIRST_SEEN_FILE  = os.path.join(DATA_DIR, "breaking_first_seen.json")
 
 SCORE_POST  = 60   # immediate post
 SCORE_QUEUE = 40   # add to queue
@@ -118,6 +119,57 @@ def _save_state(state):
             os.unlink(tmp)
         except Exception:
             pass
+
+
+# ── First-seen tracking (fixes RSS lag) ───────────────────────────────────
+# RSS feeds deliver articles 15-20 min after publication. Using published_at
+# as the age clock rejects real breaking news because it looks "old" by the
+# time our feed fetches it. First-seen time = when WE first encountered it,
+# so a story is always fresh on its first appearance.
+
+def _load_first_seen():
+    try:
+        with open(FIRST_SEEN_FILE) as f:
+            return json.load(f)
+    except Exception:
+        return {}
+
+
+def _save_first_seen(data):
+    os.makedirs(DATA_DIR, exist_ok=True)
+    tmp = FIRST_SEEN_FILE + ".tmp"
+    try:
+        with open(tmp, "w") as f:
+            json.dump(data, f, indent=2)
+        os.replace(tmp, FIRST_SEEN_FILE)
+    except Exception as e:
+        logger.warning(f"First-seen save failed: {e}")
+        try:
+            os.unlink(tmp)
+        except Exception:
+            pass
+
+
+def _register_first_seen(articles, first_seen_data):
+    """Record now as the first-seen time for any article we haven't seen before."""
+    now_str = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+    for a in articles:
+        h = a.get("hash", "")
+        if h and h not in first_seen_data:
+            first_seen_data[h] = now_str
+
+
+def _prune_first_seen(data, max_age_hours=2):
+    """Remove entries older than 2 hours to keep the file small."""
+    cutoff = datetime.now(timezone.utc) - timedelta(hours=max_age_hours)
+    pruned = {}
+    for k, v in data.items():
+        try:
+            if datetime.fromisoformat(v.replace("Z", "+00:00")) > cutoff:
+                pruned[k] = v
+        except Exception:
+            pass
+    return pruned
 
 
 # ── Fetch recent articles (< 15 min) ──────────────────────────────────────
@@ -223,13 +275,28 @@ def _build_story_clusters(articles):
 
 # ── Breaking score ────────────────────────────────────────────────────────
 
-def _breaking_score(article, story_clusters=None, source_counts=None):
+def _breaking_score(article, story_clusters=None, first_seen_data=None):
+    # Hard cutoff — reject articles we first saw more than 15 minutes ago.
+    # Using first-seen time (not published_at) so RSS lag never causes false
+    # rejections: a story is always "fresh" the first time we encounter it.
+    now_utc      = datetime.now(timezone.utc)
+    article_hash = article.get("hash", "")
+    first_seen_str = (first_seen_data or {}).get(article_hash)
+    if first_seen_str:
+        try:
+            first_seen = datetime.fromisoformat(first_seen_str.replace("Z", "+00:00"))
+            age_min    = (now_utc - first_seen).total_seconds() / 60
+            if age_min > 15:
+                return 0
+        except Exception:
+            pass
+    # No first-seen entry = brand new this run → always fresh, no cutoff
+
     score = 0
     text  = (article.get("title", "") + " " + article.get("summary", "")).lower()
 
     # True trending: how many unique domains cover this same story
-    # 5+ domains = massive trend (+50); 3+ = trending (+35); 2 = gaining traction (+20)
-    cluster_size = (story_clusters or {}).get(article.get("hash", ""), 1)
+    cluster_size = (story_clusters or {}).get(article_hash, 1)
     if cluster_size >= 5:
         score += 50
     elif cluster_size >= 3:
@@ -255,20 +322,21 @@ def _breaking_score(article, story_clusters=None, source_counts=None):
             score += 20
             break
 
-    # Recency bonus — tiered across the full 120-min window
-    pub = article.get("published_at")
-    if pub:
+    # Recency bonus based on first-seen age
+    if first_seen_str:
         try:
-            dt      = datetime.fromisoformat(pub.replace("Z", "+00:00"))
-            age_min = (datetime.now(timezone.utc) - dt).total_seconds() / 60
-            if age_min < 15:
+            first_seen = datetime.fromisoformat(first_seen_str.replace("Z", "+00:00"))
+            age_min    = (now_utc - first_seen).total_seconds() / 60
+            if age_min < 5:
                 score += 20
-            elif age_min < 30:
+            elif age_min < 10:
                 score += 15
-            elif age_min < 45:
+            else:
                 score += 10
         except Exception:
             pass
+    else:
+        score += 20   # brand new this run → maximum recency bonus
 
     return score
 
@@ -321,6 +389,51 @@ def _prune_old_stories(posted_today, max_age_hours=2):
         s for s in posted_today
         if datetime.fromisoformat(s["posted_at"].replace("Z", "+00:00")) > cutoff
     ]
+
+
+# ── Sports cross-pipeline guard ───────────────────────────────────────────
+
+_VS_PAT = re.compile(
+    r'([A-Za-z][A-Za-z .]{2,28}?)\s+(?:vs?\.?|versus)\s+([A-Za-z][A-Za-z .]{2,28})',
+    re.IGNORECASE,
+)
+
+def _is_tracked_by_sports(article):
+    """
+    Returns True if sports_tracker already has an active match for the teams
+    mentioned in this article. Breaking detector should defer to sports_tracker
+    in that case to avoid the same result being posted by both pipelines.
+    """
+    title = article.get("title", "")
+    m = _VS_PAT.search(title)
+    if not m:
+        return False
+
+    a1 = m.group(1).strip().lower()[:15]
+    a2 = m.group(2).strip().lower()[:15]
+
+    sports_state_file = os.path.join(DATA_DIR, "sports_state.json")
+    try:
+        with open(sports_state_file) as f:
+            sports_state = json.load(f)
+    except Exception:
+        return False
+
+    for match in sports_state.get("active_matches", []):
+        teams = match.get("teams", [])
+        if len(teams) < 2:
+            continue
+        t1, t2 = teams[0].lower()[:15], teams[1].lower()[:15]
+        # Match if both article teams overlap with tracked teams (either order)
+        pair_match = (
+            ((a1 in t1 or t1 in a1) and (a2 in t2 or t2 in a2)) or
+            ((a1 in t2 or t2 in a1) and (a2 in t1 or t1 in a2))
+        )
+        if pair_match:
+            logger.info(f"  sports_tracker already tracking {match['id']} — deferring")
+            return True
+
+    return False
 
 
 # ── Posts-this-hour check ─────────────────────────────────────────────────
@@ -492,19 +605,25 @@ def run():
 
     threshold = SCORE_POST
 
-    articles = _fetch_recent(max_age_minutes=30)
-    logger.info(f"Fetched {len(articles)} recent articles (< 30 min)")
+    articles = _fetch_recent(max_age_minutes=15)
+    logger.info(f"Fetched {len(articles)} recent articles (< 15 min)")
 
     if not articles:
         logger.info("No recent articles — exiting")
         return
+
+    # First-seen tracking — register new articles, prune old entries
+    first_seen_data = _load_first_seen()
+    _register_first_seen(articles, first_seen_data)
+    first_seen_data = _prune_first_seen(first_seen_data)
+    _save_first_seen(first_seen_data)
 
     # True trending: count unique domains per story cluster
     story_clusters = _build_story_clusters(articles)
 
     processed = 0
     for article in articles:
-        score = _breaking_score(article, story_clusters=story_clusters)
+        score = _breaking_score(article, story_clusters=story_clusters, first_seen_data=first_seen_data)
         logger.info(f"Score={score} | {article['title'][:80]}")
 
         if score < SCORE_QUEUE:
@@ -525,6 +644,9 @@ def run():
             if elapsed < 15:
                 logger.info("  → update too soon, skipping")
                 continue
+            if _is_tracked_by_sports(article):
+                logger.info("  → sports_tracker handling this match — skipping update")
+                continue
             if not _can_post_hour(state):
                 logger.info("  → hourly cap reached")
                 break
@@ -542,8 +664,11 @@ def run():
         # New breaking story
         if score < threshold:
             logger.info(f"  → score {score} below threshold {threshold}, queuing")
-            # Write to queue.json for main pipeline to pick up
             _write_queue(article)
+            continue
+
+        if _is_tracked_by_sports(article):
+            logger.info("  → sports_tracker handling this match — skipping breaking post")
             continue
 
         if not _can_post_hour(state):
@@ -619,12 +744,17 @@ def check_only():
     """
     state     = _load_state()
     threshold = SCORE_POST
-    articles  = _fetch_recent(max_age_minutes=30)
+    articles  = _fetch_recent(max_age_minutes=15)
+
+    first_seen_data = _load_first_seen()
+    _register_first_seen(articles, first_seen_data)
+    first_seen_data = _prune_first_seen(first_seen_data)
+    _save_first_seen(first_seen_data)
 
     story_clusters = _build_story_clusters(articles)
 
     for article in articles:
-        score = _breaking_score(article, story_clusters=story_clusters)
+        score = _breaking_score(article, story_clusters=story_clusters, first_seen_data=first_seen_data)
         if score >= threshold:
             logger.info(f"Breaking signal: score={score} | {article['title'][:70]}")
             print("true")

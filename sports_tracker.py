@@ -166,7 +166,17 @@ def _fetch_cricket_updates(match):
             logger.warning(f"Cricket RSS fetch failed {rss_url}: {e}")
             continue
 
+        cutoff = datetime.now(timezone.utc) - timedelta(minutes=30)
         for entry in feed.entries:
+            # Skip articles older than 30 minutes — no stale cricket updates
+            if hasattr(entry, "published_parsed") and entry.published_parsed:
+                try:
+                    pub_dt = datetime(*entry.published_parsed[:6], tzinfo=timezone.utc)
+                    if pub_dt < cutoff:
+                        continue
+                except Exception:
+                    pass
+
             title = (getattr(entry, "title", "") or "").lower()
             desc  = (entry.get("summary", "") or "").lower()
             text  = title + " " + desc
@@ -403,9 +413,11 @@ def _notify_sports_admin(match, posted, event_type):
 INSTAGRAM_SPORT_EVENTS = {"RESULT", "FULL_TIME", "CENTURY"}
 
 def _post_sports_update(match, captions, headline_text, league, event_type="UPDATE"):
+    import hashlib
     from pixabay_searcher  import search_with_clip_validation
     from image_composer    import save_platform_images, TAG_COLORS
     from publisher         import post_to_facebook, post_to_instagram, post_to_telegram
+    from db                import init_db, mark_posted, already_posted
 
     sport_key = "SPORTS_CRICKET" if "cricket" in match.get("type", "") else "SPORTS_FOOTBALL"
     tag_label, tag_color = LEAGUE_TAGS.get(league.upper(), ("SPORTS", None))
@@ -421,7 +433,13 @@ def _post_sports_update(match, captions, headline_text, league, event_type="UPDA
     }
 
     fake_article = {"title": headline_text}
-    image_url, _, _, best_image_path = search_with_clip_validation(fake_intent_result, article=fake_article)
+    import pixabay_searcher as _ps
+    orig_loops = _ps.MAX_RETRY_LOOPS
+    _ps.MAX_RETRY_LOOPS = 1
+    try:
+        image_url, _, _, best_image_path = search_with_clip_validation(fake_intent_result, article=fake_article)
+    finally:
+        _ps.MAX_RETRY_LOOPS = orig_loops
 
     platform_images = save_platform_images(
         image_url,
@@ -435,18 +453,34 @@ def _post_sports_update(match, captions, headline_text, league, event_type="UPDA
     # Instagram only for key moments (result/final score/century) — daily limit conservation
     post_instagram = event_type in INSTAGRAM_SPORT_EVENTS
 
+    # Use a stable hash for this match update so the DB can prevent cross-pipeline duplicates
+    article_hash = hashlib.md5(f"{match['id']}:{event_type}:{headline_text[:60]}".encode()).hexdigest()
+
     posted = []
-    if "facebook" in platform_images:
-        if post_to_facebook(captions["facebook"], platform_images["facebook"]):
-            posted.append("facebook")
+    conn = init_db()
+    try:
+        if "facebook" in platform_images:
+            if already_posted(conn, article_hash, "facebook"):
+                logger.info("  Facebook already posted (cross-pipeline) — skipping")
+            elif post_to_facebook(captions["facebook"], platform_images["facebook"]):
+                mark_posted(conn, article_hash, headline_text, "facebook")
+                posted.append("facebook")
 
-    if "instagram" in platform_images and post_instagram:
-        if post_to_instagram(captions["instagram"], platform_images["instagram"]):
-            posted.append("instagram")
+        if "instagram" in platform_images and post_instagram:
+            if already_posted(conn, article_hash, "instagram"):
+                logger.info("  Instagram already posted (cross-pipeline) — skipping")
+            elif post_to_instagram(captions["instagram"], platform_images["instagram"]):
+                mark_posted(conn, article_hash, headline_text, "instagram")
+                posted.append("instagram")
 
-    if "telegram" in platform_images:
-        if post_to_telegram(captions["telegram"], platform_images["telegram"]):
-            posted.append("telegram")
+        if "telegram" in platform_images:
+            if already_posted(conn, article_hash, "telegram"):
+                logger.info("  Telegram already posted (cross-pipeline) — skipping")
+            elif post_to_telegram(captions["telegram"], platform_images["telegram"]):
+                mark_posted(conn, article_hash, headline_text, "telegram")
+                posted.append("telegram")
+    finally:
+        conn.close()
 
     for path in platform_images.values():
         try: os.unlink(path)
@@ -658,7 +692,7 @@ def _discover_matches(state):
                 continue
             try:
                 pub_dt = datetime(*entry.published_parsed[:6], tzinfo=timezone.utc)
-                if (now_utc - pub_dt).total_seconds() / 3600 > 1:
+                if (now_utc - pub_dt).total_seconds() / 60 > 30:
                     continue
             except Exception:
                 continue
@@ -773,6 +807,20 @@ def run():
                     dt = datetime.fromisoformat(last_post.replace("Z", "+00:00"))
                     if (now - dt).total_seconds() > 7200:
                         logger.info(f"Dropping finished match {match['id']}")
+                        continue
+                except Exception:
+                    pass
+            updated.append(match)
+            continue
+
+        if match_state == "PRE_MATCH":
+            # Drop PRE_MATCH matches that were discovered more than 2 hours ago
+            start_str = match.get("start_time", "")
+            if start_str:
+                try:
+                    discovered = datetime.fromisoformat(start_str.replace("Z", "+00:00"))
+                    if (now - discovered).total_seconds() > 7200:
+                        logger.info(f"Dropping stale PRE_MATCH match {match['id']} (discovered > 2h ago)")
                         continue
                 except Exception:
                     pass

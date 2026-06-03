@@ -298,6 +298,45 @@ def _search_images(keywords, cache_key):
     return urls
 
 
+# ── og:image extractor ────────────────────────────────────────────────────
+
+def _fetch_og_image(article_url):
+    """
+    Fetch the article page and extract the og:image meta tag.
+    Returns (image_url, tmp_path) or (None, None) on failure.
+    This gives us the exact photo the journalist chose — always a perfect match.
+    """
+    if not article_url:
+        return None, None
+    try:
+        r = requests.get(
+            article_url,
+            headers={"User-Agent": "Mozilla/5.0 (NewsBot/1.0)"},
+            timeout=10,
+            allow_redirects=True,
+        )
+        if r.status_code != 200:
+            return None, None
+
+        # Try both attribute orderings — property first or content first
+        import re as _re
+        for pattern in (
+            r'<meta[^>]+property=["\']og:image["\'][^>]+content=["\'](https?://[^"\'> ]+)["\']',
+            r'<meta[^>]+content=["\'](https?://[^"\'> ]+)["\'][^>]+property=["\']og:image["\']',
+            r'<meta[^>]+name=["\']twitter:image["\'][^>]+content=["\'](https?://[^"\'> ]+)["\']',
+        ):
+            m = _re.search(pattern, r.text, _re.IGNORECASE)
+            if m:
+                og_url = m.group(1).strip()
+                path   = _download_tmp(og_url)
+                if path:
+                    logger.info(f"og:image: {og_url}")
+                    return og_url, path
+    except Exception as e:
+        logger.warning(f"og:image fetch failed ({article_url}): {e}")
+    return None, None
+
+
 # ── Image download ─────────────────────────────────────────────────────────
 
 def _download_tmp(url):
@@ -339,6 +378,14 @@ def search_with_clip_validation(intent_result, article=None):
     best_url   = None
     best_score = 0.0
     best_path  = None
+
+    # ── Try article's own og:image first — always the exact news photo ────
+    if article and article.get("url"):
+        og_url, og_path = _fetch_og_image(article["url"])
+        if og_url and og_path:
+            print(f"  [og:image] Using article's own photo")
+            _mark_image_used(og_url)
+            return og_url, 1.0, 0, og_path
 
     loop = 0
     for loop in range(MAX_RETRY_LOOPS + 1):
