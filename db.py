@@ -56,7 +56,7 @@ def already_posted(conn, url_hash, platform=None):
 
 # ─── FAST TITLE DUPLICATE CHECK (OPTIMIZED) ───────
 
-def title_already_posted(conn, title, threshold=0.78):
+def title_already_posted(conn, title, threshold=0.75):
     global _title_emb_cache
 
     title = (title or "").strip()
@@ -88,6 +88,7 @@ def title_already_posted(conn, title, threshold=0.78):
 # ─── MARK POSTED ───────────────────────────────────
 
 def mark_posted(conn, url_hash, title, platform):
+    global _title_emb_cache
 
     if not url_hash or not platform:
         return False
@@ -99,6 +100,11 @@ def mark_posted(conn, url_hash, title, platform):
         """, (url_hash, platform, title))
 
         conn.commit()
+
+        # Invalidate title cache so next article in same run
+        # cannot slip through as a near-duplicate of this one
+        _title_emb_cache = None
+
         return True
 
     except Exception as e:

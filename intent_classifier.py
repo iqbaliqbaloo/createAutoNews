@@ -208,60 +208,56 @@ RULES — Intent:
 - Set ambiguous=true if top score < 0.50
 - primary = highest-score label; secondary = second-highest
 
-RULES — Image Headline (big bold text on image, max 6 words):
-- Write exactly 4-6 plain words — the single most important fact
-- Use the simplest words possible (Grade 5 reading level)
-- No emojis, no hashtags, no punctuation at the end
-- Good examples: "Pakistan Beats India By 5 Wickets" / "Trump Cancels Anniversary Concerts"
-- Bad examples: anything over 6 words, complex words, hashtags or emojis
+LANGUAGE RULES (apply to ALL captions):
+- Write like you are texting a friend. Very simple words only.
+- Short sentences. Max 10 words per sentence.
+- No big or hard words. If a 10-year-old cannot understand it, rewrite it.
+- Do NOT use words like: unprecedented, escalation, geopolitical, bilateral, amid, pursuant, commenced, alleged, pertaining, whilst, nevertheless, henceforth.
+- Use simple words instead: started, said, killed, won, lost, happened, now, because, but, so.
 
-RULES — Image Subtext (smaller explanation text below headline, max 2 lines):
-- Line 1: One complete simple sentence, max 12 words — WHO did WHAT or key detail
-- Line 2 (optional, only if genuinely useful): max 12 words — WHERE or WHEN
-- Write enough words so the meaning is fully clear — do NOT cut mid-thought
-- Separate the two lines with \n
-- No emojis, no hashtags, no punctuation at end of lines
-- Plain simple words — Grade 5 reading level
-- Good example: "Won by 5 wickets in the final over at Dubai\nMatch was part of the Asia Cup 2025"
-- If only one line is needed, just write one line — do not force a second line
+RULES — Image Headline (big bold text on image, max 6 words):
+- Write exactly 4-6 very simple words — the single most important fact
+- No emojis, no hashtags, no punctuation at the end
+- Good: "Pakistan Beats India By 5 Wickets" / "Flood Kills 200 In Pakistan"
+- Bad: anything over 6 words, hard words, hashtags
+
+RULES — Image Subtext (smaller text below headline, max 2 lines):
+- Line 1: One simple sentence, max 10 words — WHO did WHAT
+- Line 2 (optional): max 10 words — WHERE or WHEN
+- Separate with \n. No emojis, no hashtags.
+- Good: "Australia beat Turkey 2-0 in World Cup\nMatch played in Dallas, USA"
 
 RULES — Facebook caption:
-GOAL: Write like a knowledgeable friend explaining the news. Simple words, short sentences (max 12 words each).
 - Line 1 (TOPIC LABEL): Start with:
   WAR → "⚔️ WAR & CONFLICT |"  POLITICS → "🏛️ POLITICS |"
-  ECONOMY → "📈 ECONOMY |"       DISASTER → "🚨 DISASTER ALERT |"  HEALTH → "🏥 HEALTH ALERT |"
+  ECONOMY → "📈 ECONOMY |"  DISASTER → "🚨 DISASTER ALERT |"  HEALTH → "🏥 HEALTH ALERT |"
   SPORTS → "🏆 SPORTS |"  TECHNOLOGY → "💡 TECHNOLOGY |"  ENTERTAINMENT → "🎬 ENTERTAINMENT |"
-  Then write ONE clear sentence about what happened.
-- Explanation (adapt length to story complexity):
-  • Simple news (sports score, resignation, celebrity): 1-2 sentences
-  • Moderate news (political decision, tech launch, film release): 2-3 sentences with brief context
-  • Complex news (war, crisis, disaster): 3-4 sentences explaining who, what, why it matters
-- Each sentence max 12 words. Plain simple English only.
-- Final line: 5-8 hashtags including #VisionaryMinds #BreakingNews and topic-specific tags from: {intent_tags}
-- No URLs. Max 2 emojis total.
+  Then write ONE clear simple sentence about what happened.
+- Body: Tell the full story in simple words. Cover WHO, WHAT, WHERE, WHY it matters.
+  • Sports result: score, who scored, what it means for the team (4-5 sentences)
+  • War/disaster/health: what happened, how many affected, what is being done (4-6 sentences)
+  • Politics/economy: what was decided, who decided it, how it affects people (4-5 sentences)
+  • Each sentence on its own line. Max 10 words per sentence.
+- End with ONLY 3 hashtags: #VisionaryMinds #BreakingNews and ONE topic tag
+- No URLs. Max 1 emoji in the body.
 
 RULES — Instagram caption:
-- Line 1: Topic label + one clear sentence about what happened
-- Explanation (adapt to complexity — same rules as Facebook above)
-- Each sentence on its own line. Max 12 words per sentence.
+- Same topic label as Facebook on line 1
+- Same body content as Facebook — tell the full story simply
+- Each sentence on its own line
 - Add: "Follow @VisionaryMinds for live updates 👇"
+- End with ONLY 5 hashtags: #VisionaryMinds #BreakingNews #WorldNews and TWO topic tags
 - Do NOT include any URL or link
-- 25-30 hashtags including #VisionaryMinds #BreakingNews #WorldNews #News #CurrentAffairs #Trending #Viral #MustSee #TopStory
-- Add location hashtags if a country/city is mentioned
-- Add topic-specific tags from: {intent_tags}
 
 RULES — Telegram caption:
-- Start: "🔴 **BREAKING: {{one clear sentence summary}}**"
-- Explanation (adapt to complexity):
-  • Simple news: 2 short sentences
-  • Complex news: 3-5 sentences covering who/what/where/when/why it matters
-- Each sentence max 12 words. Simple plain English only.
-- End with 3-5 hashtags including #VisionaryMinds #BreakingNews
+- Start: "🔴 **BREAKING — {{one clear simple sentence}}**"
+- Body: Tell the full story. Same depth as Facebook.
+- Each sentence on its own line. Max 10 words per sentence.
+- End with ONLY 3 hashtags: #VisionaryMinds #BreakingNews and ONE topic tag
 - Do NOT include any URL or link
-- Use **bold** for the opening headline only
+- Bold only the opening line
 
-Brand tags always include: #VisionaryMinds #VMUpdates
-{f"Trending now — weave these into hashtags if relevant: {trending_context}" if trending_context else ""}
+{f"Trending context (use only if directly relevant): {trending_context}" if trending_context else ""}
 """
 
     raw = None
@@ -346,57 +342,25 @@ Brand tags always include: #VisionaryMinds #VMUpdates
 # ── Helpers ────────────────────────────────────────────────────────────────
 
 _FB_FOOTER = {
-    "WAR":           "#VisionaryMinds #VMUpdates #BreakingNews #WorldNews #WarNews #GlobalCrisis",
-    "POLITICS":      "#VisionaryMinds #VMUpdates #BreakingNews #WorldNews #Politics #CurrentAffairs",
-    "ECONOMY":       "#VisionaryMinds #VMUpdates #BreakingNews #WorldNews #Economy #Finance",
-    "DISASTER":      "#VisionaryMinds #VMUpdates #BreakingNews #WorldNews #Disaster #EmergencyAlert",
-    "HEALTH":        "#VisionaryMinds #VMUpdates #BreakingNews #WorldNews #Health #PublicHealth #HealthAlert #Outbreak",
-    "SPORTS":        "#VisionaryMinds #VMUpdates #BreakingNews #WorldNews #Sports #SportsUpdate",
-    "TECHNOLOGY":    "#VisionaryMinds #VMUpdates #Technology #Tech #AI #Innovation #TechNews #Digital",
-    "ENTERTAINMENT": "#VisionaryMinds #VMUpdates #Entertainment #Bollywood #Lollywood #Celebrity #Movies #Music",
+    "WAR":           "#VisionaryMinds #BreakingNews #WorldNews",
+    "POLITICS":      "#VisionaryMinds #BreakingNews #Politics",
+    "ECONOMY":       "#VisionaryMinds #BreakingNews #Economy",
+    "DISASTER":      "#VisionaryMinds #BreakingNews #Disaster",
+    "HEALTH":        "#VisionaryMinds #BreakingNews #Health",
+    "SPORTS":        "#VisionaryMinds #BreakingNews #Sports",
+    "TECHNOLOGY":    "#VisionaryMinds #BreakingNews #Technology",
+    "ENTERTAINMENT": "#VisionaryMinds #BreakingNews #Entertainment",
 }
 
 _IG_FOOTER = {
-    "WAR":           (
-        "#VisionaryMinds #VMUpdates #BreakingNews #WorldNews #WarNews #GlobalCrisis "
-        "#Conflict #LiveUpdates #UrgentNews #MustShare #News #CurrentAffairs "
-        "#Trending #Viral #MustSee #TopStory #NewsAlert #GlobalNews #NowNews"
-    ),
-    "POLITICS":      (
-        "#VisionaryMinds #VMUpdates #BreakingNews #WorldNews #Politics #GlobalPolitics "
-        "#CurrentAffairs #PoliticalNews #MustRead #TopStory #News #Trending "
-        "#Viral #MustSee #NewsAlert #GlobalNews #NowNews #InformationIsPower"
-    ),
-    "ECONOMY":       (
-        "#VisionaryMinds #VMUpdates #BreakingNews #WorldNews #Economy #Finance "
-        "#MarketNews #Inflation #EconomicCrisis #MoneyMatters #MustKnow #News "
-        "#CurrentAffairs #Trending #Viral #MustSee #TopStory #NewsAlert #NowNews"
-    ),
-    "DISASTER":      (
-        "#VisionaryMinds #VMUpdates #BreakingNews #WorldNews #Disaster #NaturalDisaster "
-        "#EmergencyAlert #PrayersNeeded #HumanityFirst #UrgentNews #News #CurrentAffairs "
-        "#Trending #Viral #MustSee #TopStory #NewsAlert #GlobalNews #NowNews"
-    ),
-    "HEALTH":        (
-        "#VisionaryMinds #VMUpdates #BreakingNews #WorldNews #Health #PublicHealth "
-        "#HealthAlert #Outbreak #MedicalNews #StaySafe #UrgentNews #News #CurrentAffairs "
-        "#Trending #Viral #MustSee #TopStory #NewsAlert #GlobalNews #NowNews"
-    ),
-    "SPORTS":        (
-        "#VisionaryMinds #VMUpdates #BreakingNews #WorldNews #Sports #Cricket "
-        "#Football #PSL #SportsUpdate #GameChanger #MustWatch #News #CurrentAffairs "
-        "#Trending #Viral #MustSee #TopStory #NewsAlert #NowNews #LiveUpdates"
-    ),
-    "TECHNOLOGY":    (
-        "#VisionaryMinds #VMUpdates #Technology #Tech #AI #Innovation #Digital "
-        "#Gadgets #TechNews #FutureTech #Trending #Viral #MustSee #MustRead "
-        "#TopStory #NewsAlert #TechUpdate #ArtificialIntelligence #Smartphones #NowNews"
-    ),
-    "ENTERTAINMENT": (
-        "#VisionaryMinds #VMUpdates #Entertainment #Bollywood #Lollywood #Celebrity "
-        "#Movies #Music #Trending #Viral #MustWatch #PopCulture #FilmIndustry "
-        "#MustSee #TopStory #NewsAlert #Drama #Fashion #Showbiz #NowNews"
-    ),
+    "WAR":           "#VisionaryMinds #BreakingNews #WorldNews #WarNews #Conflict",
+    "POLITICS":      "#VisionaryMinds #BreakingNews #WorldNews #Politics #CurrentAffairs",
+    "ECONOMY":       "#VisionaryMinds #BreakingNews #WorldNews #Economy #Finance",
+    "DISASTER":      "#VisionaryMinds #BreakingNews #WorldNews #Disaster #Emergency",
+    "HEALTH":        "#VisionaryMinds #BreakingNews #WorldNews #Health #Outbreak",
+    "SPORTS":        "#VisionaryMinds #BreakingNews #WorldNews #Sports #LiveScore",
+    "TECHNOLOGY":    "#VisionaryMinds #BreakingNews #WorldNews #Technology #Tech",
+    "ENTERTAINMENT": "#VisionaryMinds #BreakingNews #WorldNews #Entertainment #Bollywood",
 }
 
 

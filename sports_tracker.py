@@ -41,6 +41,9 @@ VS_PATTERN = re.compile(
 
 # Sport-type classifier: first keyword match wins
 SPORT_CONTEXTS = {
+    "FIFA":       ["world cup 2026", "fifa world cup", "worldcup", "wc2026",
+                   "world cup group", "world cup final", "world cup match",
+                   "world cup qualifier", "world cup result"],
     "cricket":    ["cricket", "odi", "t20", "test match", "wicket", "innings",
                    "icc", "psl", "ipl", "ashes", "over"],
     "football":   ["football", "soccer", "goal", "penalty", "premier league",
@@ -90,6 +93,7 @@ CRICKET_TEAMS = [
 ]
 
 MAX_POSTS = {
+    "FIFA":         12,  # World Cup — highest priority, more posts per match
     "cricket_t20":  8,
     "cricket_odi":  6,
     "cricket_test": 4,
@@ -98,17 +102,18 @@ MAX_POSTS = {
     "f1":           4,
     "boxing":       4,
     "basketball":   4,
-    "sports":       3,   # generic fallback
+    "sports":       3,
 }
 
 # League → tag label + colour (RGB)
 LEAGUE_TAGS = {
-    "PSL":     ("PSL",      (  0,  99,  65)),
-    "IPL":     ("IPL",      (  0,  75, 160)),
-    "UCL":     ("UCL",      (  0,  29,  61)),
-    "EPL":     ("EPL",      ( 56,   0,  60)),
-    "CRICKET": ("CRICKET",  (108,  43, 217)),
-    "FOOTBALL":("FOOTBALL", (  5, 122,  85)),
+    "FIFA":    ("FIFA WORLD CUP", ( 53,  99, 233)),
+    "PSL":     ("PSL",            (  0,  99,  65)),
+    "IPL":     ("IPL",            (  0,  75, 160)),
+    "UCL":     ("UCL",            (  0,  29,  61)),
+    "EPL":     ("EPL",            ( 56,   0,  60)),
+    "CRICKET": ("CRICKET",        (108,  43, 217)),
+    "FOOTBALL":("FOOTBALL",       (  5, 122,  85)),
 }
 
 # Cricket RSS feeds used during live-match polling (separate from discovery)
@@ -659,9 +664,10 @@ def _process_generic_sport(match):
 # ── Auto-discovery: ANY sport, ANY teams, trend or importance based ───────
 
 def _detect_sport(title):
-    """Return sport type string based on keywords in title."""
+    """Return sport type string based on keywords in title. FIFA checked first."""
+    title_lower = title.lower()
     for sport, keywords in SPORT_CONTEXTS.items():
-        if any(kw in title for kw in keywords):
+        if any(kw in title_lower for kw in keywords):
             return sport
     return "sports"
 
@@ -743,8 +749,10 @@ def _discover_matches(state):
 
         sport = _detect_sport(title)
 
-        # Cricket sub-type
-        if sport == "cricket":
+        # Sport sub-type
+        if sport == "FIFA":
+            match_type = "FIFA"
+        elif sport == "cricket":
             if "t20" in title:
                 match_type = "cricket_t20"
             elif "test" in title:
@@ -845,7 +853,7 @@ def run():
 
         if "cricket" in match_type:
             match = _process_cricket(match)
-        elif match_type == "football":
+        elif match_type in ("football", "FIFA"):
             match = _process_football(match)
         else:
             # tennis, f1, boxing, basketball, generic sports

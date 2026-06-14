@@ -28,6 +28,11 @@ _MED_EMOTION = {
     "controversial", "outrage", "outraged", "fury", "anger",
 }
 
+_WORLD_CUP_SIGNAL = {
+    "world cup", "fifa", "worldcup", "wc2026", "world cup 2026",
+    "group stage", "knockout", "quarter final", "semi final", "final",
+}
+
 _PAKISTAN_SIGNAL = {
     "pakistan", "karachi", "lahore", "islamabad", "rawalpindi", "peshawar",
     "quetta", "multan", "faisalabad", "imran", "nawaz", "shehbaz",
@@ -86,6 +91,10 @@ def virality_score(article: dict) -> float:
         score += 8
     elif med_hits == 1:
         score += 4
+
+    # World Cup boost — highest priority sports event
+    if any(kw in text for kw in _WORLD_CUP_SIGNAL):
+        score += 20
 
     # Pakistan relevance
     pak_hits = len(words & _PAKISTAN_SIGNAL)
