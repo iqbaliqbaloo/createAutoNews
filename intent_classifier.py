@@ -209,53 +209,57 @@ RULES — Intent:
 - primary = highest-score label; secondary = second-highest
 
 LANGUAGE RULES (apply to ALL captions):
-- Write like you are texting a friend. Very simple words only.
-- Short sentences. Max 10 words per sentence.
-- No big or hard words. If a 10-year-old cannot understand it, rewrite it.
-- Do NOT use words like: unprecedented, escalation, geopolitical, bilateral, amid, pursuant, commenced, alleged, pertaining, whilst, nevertheless, henceforth.
-- Use simple words instead: started, said, killed, won, lost, happened, now, because, but, so.
+- Write like you are explaining to a friend who knows nothing about this story.
+- The reader must understand EVERYTHING from your post alone. No guessing needed.
+- Very simple words only. Short sentences. Max 10 words per sentence.
+- No hard words like: unprecedented, escalation, geopolitical, bilateral, amid, alleged, commenced.
+- Use simple words: started, said, killed, won, lost, beat, happened, because, but, so.
 
 RULES — Image Headline (big bold text on image, max 6 words):
-- Write exactly 4-6 very simple words — the single most important fact
-- No emojis, no hashtags, no punctuation at the end
-- Good: "Pakistan Beats India By 5 Wickets" / "Flood Kills 200 In Pakistan"
-- Bad: anything over 6 words, hard words, hashtags
+- Write the RESULT or KEY FACT in 4-6 simple words.
+- Must be 100% clear on its own. No cryptic references.
+- Good: "Scotland Beat Haiti 1-0 Today" / "Flood Kills 200 In Pakistan"
+- Bad: "36 Years In The Making" (reader doesn't know what happened)
 
 RULES — Image Subtext (smaller text below headline, max 2 lines):
-- Line 1: One simple sentence, max 10 words — WHO did WHAT
-- Line 2 (optional): max 10 words — WHERE or WHEN
+- Line 1: WHO + WHAT + WHERE in one simple sentence, max 10 words
+- Line 2 (optional): extra detail like WHEN or WHY, max 10 words
 - Separate with \n. No emojis, no hashtags.
-- Good: "Australia beat Turkey 2-0 in World Cup\nMatch played in Dallas, USA"
+- Good: "Scotland beat Haiti 1-0 in the FIFA World Cup 2026\nMatch played on 13 June in Kansas City"
 
 RULES — Facebook caption:
 - Line 1 (TOPIC LABEL): Start with:
   WAR → "⚔️ WAR & CONFLICT |"  POLITICS → "🏛️ POLITICS |"
   ECONOMY → "📈 ECONOMY |"  DISASTER → "🚨 DISASTER ALERT |"  HEALTH → "🏥 HEALTH ALERT |"
   SPORTS → "🏆 SPORTS |"  TECHNOLOGY → "💡 TECHNOLOGY |"  ENTERTAINMENT → "🎬 ENTERTAINMENT |"
-  Then write ONE clear simple sentence about what happened.
-- Body: Tell the full story in simple words. Cover WHO, WHAT, WHERE, WHY it matters.
-  • Sports result: score, who scored, what it means for the team (4-5 sentences)
-  • War/disaster/health: what happened, how many affected, what is being done (4-6 sentences)
-  • Politics/economy: what was decided, who decided it, how it affects people (4-5 sentences)
+  Then immediately write the FULL RESULT in one sentence. Example:
+  "🏆 SPORTS | Scotland beat Haiti 1-0 in the FIFA World Cup 2026."
+  NOT: "🏆 SPORTS | A historic win 36 years in the making." (reader still doesn't know who won)
+
+- Body: Tell the complete story. Every important fact. Simple words.
+  • Sports: who played, final score, who scored and when, standings impact, what happens next
+  • War/disaster/health: what happened, exact location, how many killed/affected, what is being done now
+  • Politics/economy: what decision was made, who made it, when, how it affects normal people
   • Each sentence on its own line. Max 10 words per sentence.
+  • Write 4-6 sentences minimum — give real detail, not vague summaries.
+
 - End with ONLY 3 hashtags: #VisionaryMinds #BreakingNews and ONE topic tag
-- No URLs. Max 1 emoji in the body.
+- No URLs. Max 1 emoji in the body (not the label line).
 
 RULES — Instagram caption:
-- Same topic label as Facebook on line 1
-- Same body content as Facebook — tell the full story simply
-- Each sentence on its own line
+- Same first line as Facebook (topic label + full result sentence)
+- Same body as Facebook — complete story, simple words, each sentence on its own line
 - Add: "Follow @VisionaryMinds for live updates 👇"
 - End with ONLY 5 hashtags: #VisionaryMinds #BreakingNews #WorldNews and TWO topic tags
 - Do NOT include any URL or link
 
 RULES — Telegram caption:
-- Start: "🔴 **BREAKING — {{one clear simple sentence}}**"
-- Body: Tell the full story. Same depth as Facebook.
-- Each sentence on its own line. Max 10 words per sentence.
+- First line: "🔴 **[TOPIC]: [WHO] [DID WHAT] [SCORE/RESULT] [WHERE]**"
+  Example: "🔴 **SPORTS: Scotland beat Haiti 1-0 in the FIFA World Cup 2026**"
+  NOT: "🔴 **BREAKING: A historic achievement for Scotland**" (unclear)
+- Body: Same complete story as Facebook. Each sentence on its own line.
 - End with ONLY 3 hashtags: #VisionaryMinds #BreakingNews and ONE topic tag
-- Do NOT include any URL or link
-- Bold only the opening line
+- Do NOT include any URL or link. Bold only the first line.
 
 {f"Trending context (use only if directly relevant): {trending_context}" if trending_context else ""}
 """
