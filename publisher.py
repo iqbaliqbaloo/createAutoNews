@@ -100,8 +100,8 @@ def post_to_facebook(text, image_path=None):
     print(f"  Posting Facebook via Make.com (image={'yes' if img_url else 'no'})...")
 
     webhooks = [
-        ("MAKE_WEBHOOK_URL",   os.getenv("MAKE_WEBHOOK_URL")),
         ("MAKE_WEBHOOK_URL_2", os.getenv("MAKE_WEBHOOK_URL_2")),
+        ("MAKE_WEBHOOK_URL",   os.getenv("MAKE_WEBHOOK_URL")),
     ]
 
     for name, url in webhooks:
@@ -139,8 +139,8 @@ def post_to_instagram(text, image_path=None):
     print("  Posting Instagram via Make.com...")
 
     webhooks = [
-        ("MAKE_WEBHOOK_URL_1", os.getenv("MAKE_WEBHOOK_URL_1")),
         ("MAKE_WEBHOOK_URL_3", os.getenv("MAKE_WEBHOOK_URL_3")),
+        ("MAKE_WEBHOOK_URL_1", os.getenv("MAKE_WEBHOOK_URL_1")),
     ]
 
     for name, url in webhooks:
