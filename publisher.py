@@ -69,8 +69,28 @@ def _send_to_url(url, payload, label, retries=2):
 
 # ── Platform post functions ────────────────────────────────────────────────
 
+def _alert_telegram(message):
+    """Send a plain-text alert to Telegram when Make.com webhooks are down."""
+    token   = os.getenv("TELEGRAM_BOT_TOKEN")
+    channel = os.getenv("TELEGRAM_CHANNEL_ID")
+    if not token or not channel:
+        return
+    try:
+        requests.post(
+            f"https://api.telegram.org/bot{token}/sendMessage",
+            data={"chat_id": channel, "text": message},
+            timeout=10,
+        )
+    except Exception:
+        pass
+
+
 def post_to_facebook(text, image_path=None):
-    """Send Facebook post to Make.com via MAKE_WEBHOOK_URL (never MAKE_WEBHOOK_URL_1)."""
+    """
+    Post to Facebook via Make.com with fallback.
+    Tries MAKE_WEBHOOK_URL first. If it fails (credits exhausted / error),
+    falls back to MAKE_WEBHOOK_URL_2. Same page — backup scenario only.
+    """
     img_url = upload_to_imgbb(image_path) if image_path else None
     payload = {
         "platform":  "facebook",
@@ -78,31 +98,64 @@ def post_to_facebook(text, image_path=None):
         "image_url": img_url or "",
     }
     print(f"  Posting Facebook via Make.com (image={'yes' if img_url else 'no'})...")
-    url = os.getenv("MAKE_WEBHOOK_URL")
-    # retries=1 (no retry) — Make.com may process the request even if we get a
-    # network timeout, so retrying would cause a double post on Facebook.
-    ok  = _send_to_url(url, payload, "Facebook(MAKE_WEBHOOK_URL)", retries=1)
-    print("✅ FB posted via Make.com" if ok else "❌ FB post failed")
-    return ok
+
+    webhooks = [
+        ("MAKE_WEBHOOK_URL",   os.getenv("MAKE_WEBHOOK_URL")),
+        ("MAKE_WEBHOOK_URL_2", os.getenv("MAKE_WEBHOOK_URL_2")),
+    ]
+
+    for name, url in webhooks:
+        if not url:
+            print(f"  ⚠️  {name} not set — skipping")
+            continue
+        ok = _send_to_url(url, payload, f"Facebook({name})", retries=1)
+        if ok:
+            print(f"  ✅ FB posted via {name}")
+            return True
+        print(f"  ❌ FB failed via {name} — trying fallback...")
+
+    print("  ❌ All Facebook webhooks failed")
+    _alert_telegram("⚠️ Facebook Make.com DOWN — all webhooks failed. Check Make.com scenarios.")
+    return False
 
 
 def post_to_instagram(text, image_path=None):
-    """Send Instagram post to Make.com via MAKE_WEBHOOK_URL_1 (never MAKE_WEBHOOK_URL)."""
+    """
+    Post to Instagram via Make.com with fallback.
+    Tries MAKE_WEBHOOK_URL_1 first. If it fails (credits exhausted / error),
+    falls back to MAKE_WEBHOOK_URL_3. Same account — backup scenario only.
+    """
     img_url = upload_to_imgbb(image_path) if image_path else None
     if not img_url:
         reason = "no image provided" if not image_path else "upload failed"
         print(f"❌ Instagram: image required but {reason} — skipping")
         return False
+
     payload = {
         "platform":  "instagram",
         "message":   text,
         "image_url": img_url,
     }
     print("  Posting Instagram via Make.com...")
-    url = os.getenv("MAKE_WEBHOOK_URL_1")
-    ok  = _send_to_url(url, payload, "Instagram(MAKE_WEBHOOK_URL_1)")
-    print("✅ Instagram posted via Make.com" if ok else "❌ Instagram post failed")
-    return ok
+
+    webhooks = [
+        ("MAKE_WEBHOOK_URL_1", os.getenv("MAKE_WEBHOOK_URL_1")),
+        ("MAKE_WEBHOOK_URL_3", os.getenv("MAKE_WEBHOOK_URL_3")),
+    ]
+
+    for name, url in webhooks:
+        if not url:
+            print(f"  ⚠️  {name} not set — skipping")
+            continue
+        ok = _send_to_url(url, payload, f"Instagram({name})", retries=1)
+        if ok:
+            print(f"  ✅ Instagram posted via {name}")
+            return True
+        print(f"  ❌ Instagram failed via {name} — trying fallback...")
+
+    print("  ❌ All Instagram webhooks failed")
+    _alert_telegram("⚠️ Instagram Make.com DOWN — all webhooks failed. Check Make.com scenarios.")
+    return False
 
 
 def send_error_email(subject, body):

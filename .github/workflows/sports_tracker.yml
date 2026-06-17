@@ -134,7 +134,9 @@ jobs:
         run: python sports_tracker.py
         env:
           MAKE_WEBHOOK_URL:   ${{ secrets.MAKE_WEBHOOK_URL }}
+          MAKE_WEBHOOK_URL_2: ${{ secrets.MAKE_WEBHOOK_URL_2 }}
           MAKE_WEBHOOK_URL_1: ${{ secrets.MAKE_WEBHOOK_URL_1 }}
+          MAKE_WEBHOOK_URL_3: ${{ secrets.MAKE_WEBHOOK_URL_3 }}
           GROQ_API_KEY:       ${{ secrets.GROQ_API_KEY }}
           GROQ_API_KEY_2:     ${{ secrets.GROQ_API_KEY_2 }}
           PIXABAY_API_KEY:           ${{ secrets.PIXABAY_API_KEY }}

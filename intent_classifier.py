@@ -76,6 +76,12 @@ _VIRAL_HOOKS = {
         "A significant result has been recorded:",
         "The latest from today's live fixture:",
     ],
+    "FIFA":          [
+        "⚽ World Cup 2026 is heating up — here is what just happened:",
+        "This World Cup moment will be talked about for years:",
+        "The FIFA World Cup 2026 just gave us a night to remember:",
+        "Football fans, this one is big — here is the full story:",
+    ],
     "TECHNOLOGY":    [
         "This tech news is about to change how you live:",
         "The biggest technology story right now — here is what happened:",
@@ -232,12 +238,14 @@ RULES — Facebook caption:
   WAR → "⚔️ WAR & CONFLICT |"  POLITICS → "🏛️ POLITICS |"
   ECONOMY → "📈 ECONOMY |"  DISASTER → "🚨 DISASTER ALERT |"  HEALTH → "🏥 HEALTH ALERT |"
   SPORTS → "🏆 SPORTS |"  TECHNOLOGY → "💡 TECHNOLOGY |"  ENTERTAINMENT → "🎬 ENTERTAINMENT |"
+  FIFA WORLD CUP (if article is about World Cup 2026) → "⚽ FIFA WORLD CUP 2026 |"
   Then immediately write the FULL RESULT in one sentence. Example:
-  "🏆 SPORTS | Scotland beat Haiti 1-0 in the FIFA World Cup 2026."
+  "⚽ FIFA WORLD CUP 2026 | France beat Argentina 2-1 in the World Cup semi-final."
   NOT: "🏆 SPORTS | A historic win 36 years in the making." (reader still doesn't know who won)
 
 - Body: Tell the complete story. Every important fact. Simple words.
-  • Sports: who played, final score, who scored and when, standings impact, what happens next
+  • FIFA WORLD CUP: team A vs team B, final score, who scored and in which minute, group/stage name, what this result means (who qualifies, who is out), what match is next
+  • Sports (other): who played, final score, who scored and when, standings impact, what happens next
   • War/disaster/health: what happened, exact location, how many killed/affected, what is being done now
   • Politics/economy: what decision was made, who made it, when, how it affects normal people
   • Each sentence on its own line. Max 10 words per sentence.
@@ -256,6 +264,7 @@ RULES — Instagram caption:
 RULES — Telegram caption:
 - First line: "🔴 **[TOPIC]: [WHO] [DID WHAT] [SCORE/RESULT] [WHERE]**"
   Example: "🔴 **SPORTS: Scotland beat Haiti 1-0 in the FIFA World Cup 2026**"
+  FIFA example: "⚽ **FIFA WORLD CUP 2026: France beat Argentina 2-1 in the semi-final**"
   NOT: "🔴 **BREAKING: A historic achievement for Scotland**" (unclear)
 - Body: Same complete story as Facebook. Each sentence on its own line.
 - End with ONLY 3 hashtags: #VisionaryMinds #BreakingNews and ONE topic tag
@@ -305,10 +314,19 @@ RULES — Telegram caption:
 
         # ── Guaranteed hashtag + CTA footer (never rely on LLM alone) ─────
         primary = intent_data.get("primary", "POLITICS")
+
+        # Detect FIFA World Cup articles and use FIFA-specific footer + label
+        _title_low = (article.get("title", "") or "").lower()
+        _fifa_kws  = {"world cup", "fifa", "wc2026", "worldcup", "world cup 2026"}
+        effective_intent = (
+            "FIFA" if primary == "SPORTS" and any(k in _title_low for k in _fifa_kws)
+            else primary
+        )
+
         if captions.get("facebook"):
-            captions["facebook"] = _ensure_fb_footer(captions["facebook"], primary)
+            captions["facebook"] = _ensure_fb_footer(captions["facebook"], effective_intent)
         if captions.get("instagram"):
-            captions["instagram"] = _ensure_ig_footer(captions["instagram"], primary)
+            captions["instagram"] = _ensure_ig_footer(captions["instagram"], effective_intent)
 
         # ── Enforce image headline 8-word limit ───────────────────────────
         if captions.get("image_headline"):
@@ -352,6 +370,7 @@ _FB_FOOTER = {
     "DISASTER":      "#VisionaryMinds #BreakingNews #Disaster",
     "HEALTH":        "#VisionaryMinds #BreakingNews #Health",
     "SPORTS":        "#VisionaryMinds #BreakingNews #Sports",
+    "FIFA":          "#VisionaryMinds #FIFAWorldCup #WorldCup2026",
     "TECHNOLOGY":    "#VisionaryMinds #BreakingNews #Technology",
     "ENTERTAINMENT": "#VisionaryMinds #BreakingNews #Entertainment",
 }
@@ -363,6 +382,7 @@ _IG_FOOTER = {
     "DISASTER":      "#VisionaryMinds #BreakingNews #WorldNews #Disaster #Emergency",
     "HEALTH":        "#VisionaryMinds #BreakingNews #WorldNews #Health #Outbreak",
     "SPORTS":        "#VisionaryMinds #BreakingNews #WorldNews #Sports #LiveScore",
+    "FIFA":          "#VisionaryMinds #FIFAWorldCup #WorldCup2026 #FIFA #Football",
     "TECHNOLOGY":    "#VisionaryMinds #BreakingNews #WorldNews #Technology #Tech",
     "ENTERTAINMENT": "#VisionaryMinds #BreakingNews #WorldNews #Entertainment #Bollywood",
 }
