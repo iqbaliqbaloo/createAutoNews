@@ -29,7 +29,8 @@ STATE_FILE = os.path.join(DATA_DIR, "sports_state.json")
 
 FOOTBALL_API = "https://api.football-data.org/v4"
 
-COOLDOWN_MINUTES = 20
+COOLDOWN_MINUTES        = 60   # routine updates — max one per hour per match
+COOLDOWN_MINUTES_INSTANT = 20   # after instant events (WICKET/GOAL/RESULT) — resets faster
 
 # ── Generic "X vs Y" detector — works for ANY sport ──────────────────────
 # Matches patterns like: "Pakistan vs Australia", "Real Madrid v Barcelona",
@@ -348,15 +349,17 @@ def _build_caption(match, event_type, score_text, update_text):
 # ── Cooldown check ────────────────────────────────────────────────────────
 
 def _can_post(match, instant=False):
-    if instant:
-        return True
     last = match.get("last_post_time")
     if not last:
         return True
     try:
         dt      = datetime.fromisoformat(last.replace("Z", "+00:00"))
         elapsed = (datetime.now(timezone.utc) - dt).total_seconds() / 60
-        return elapsed >= COOLDOWN_MINUTES
+        # Instant events (WICKET, GOAL, RESULT) use shorter cooldown so
+        # consecutive key moments can still fire quickly.
+        # Routine updates use 60-min cooldown to prevent spam.
+        cooldown = COOLDOWN_MINUTES_INSTANT if instant else COOLDOWN_MINUTES
+        return elapsed >= cooldown
     except Exception:
         return True
 
@@ -449,7 +452,27 @@ def _post_sports_update(match, captions, headline_text, league, event_type="UPDA
         _pre_conn.close()
 
     sport_key = "SPORTS_CRICKET" if "cricket" in match.get("type", "") else "SPORTS_FOOTBALL"
+    if league.upper() == "FIFA":
+        sport_key = "FIFA"
     tag_label, tag_color = LEAGUE_TAGS.get(league.upper(), ("SPORTS", None))
+
+    # Build team-specific image search query so we get actual match photos,
+    # not generic stock images. Google Images uses this to find real news photos.
+    team1, team2   = match["teams"][0], match["teams"][1]
+    sport_str      = league.lower()
+    _event_suffix  = {
+        "WICKET":      f"cricket wicket bowled out",
+        "CENTURY":     f"cricket batsman century celebration hundred",
+        "FIFTY":       f"cricket batsman fifty runs celebration",
+        "RESULT":      f"cricket match result victory celebration trophy",
+        "GOAL":        f"football goal celebration",
+        "FULL_TIME":   f"football match full time final whistle result",
+        "HALF_TIME":   f"football halftime players pitch",
+        "DEATH_OVERS": f"cricket final overs batsman pressure",
+    }.get(event_type, f"{sport_str} players match action")
+
+    image_query  = f"{team1} {team2} {_event_suffix}"
+    fake_article = {"title": image_query}
 
     fake_intent_result = {
         "intent": {
@@ -461,7 +484,6 @@ def _post_sports_update(match, captions, headline_text, league, event_type="UPDA
         "captions": captions,
     }
 
-    fake_article = {"title": headline_text}
     import pixabay_searcher as _ps
     orig_loops = _ps.MAX_RETRY_LOOPS
     _ps.MAX_RETRY_LOOPS = 1
@@ -482,8 +504,10 @@ def _post_sports_update(match, captions, headline_text, league, event_type="UPDA
     # Instagram only for key moments (result/final score/century) — daily limit conservation
     post_instagram = event_type in INSTAGRAM_SPORT_EVENTS
 
-    # Use a stable hash for this match update so the DB can prevent cross-pipeline duplicates
-    article_hash = hashlib.md5(f"{match['id']}:{event_type}:{headline_text[:60]}".encode()).hexdigest()
+    # Stable hash: match + event_type + hour — prevents the same event from
+    # posting twice in the same hour even if the RSS headline text changes
+    hour_key     = datetime.now(timezone.utc).strftime('%Y%m%d%H')
+    article_hash = hashlib.md5(f"{match['id']}:{event_type}:{hour_key}".encode()).hexdigest()
 
     posted = []
     conn = init_db()

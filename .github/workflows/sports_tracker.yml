@@ -28,14 +28,15 @@ jobs:
         with:
           python-version: '3.11'
 
-      # ── Restore pipeline state (needed for sports_state.json) ────────────
+      # ── Restore pipeline state (shared with main pipeline for used_images.json) ─
       - name: Restore pipeline state
         uses: actions/cache@v4
         with:
           path: data/
-          key: sports-state-${{ github.run_id }}
+          key: post-state-${{ github.run_id }}
           restore-keys: |
             sports-state-
+            post-state-
 
       - name: Create data directory
         run: mkdir -p data
@@ -159,7 +160,7 @@ jobs:
         uses: actions/cache/save@v4
         with:
           path: data/
-          key: sports-state-${{ github.run_id }}
+          key: post-state-${{ github.run_id }}
         continue-on-error: true
 
       # â”€â”€ Email on workflow failure â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
