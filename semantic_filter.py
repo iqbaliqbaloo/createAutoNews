@@ -33,8 +33,10 @@ ALLOWED_TOPICS = [
     "protest demonstration riot crackdown opposition rally arrests detained",
     # Environment / climate
     "climate change carbon emissions fossil fuels warming drought flooding",
-    # Sports (competitive / major events only)
-    "World Cup Olympics championship match tournament final league squad",
+    # Sports (international / major events only)
+    "World Cup Olympics championship international match tournament final squad",
+    "FIFA World Cup 2026 football international match group stage",
+    "international cricket test odi t20i national team ICC series",
 ]
 
 BLOCKED_TOPICS = [
@@ -44,6 +46,8 @@ BLOCKED_TOPICS = [
     "social media viral tiktok influencer meme challenge entertainment",
     "reality TV show streaming Netflix drama comedy actor awards",
     "cryptocurrency bitcoin NFT investment scheme promotion advertisement",
+    "PSL Pakistan Super League IPL Indian Premier League domestic cricket T20 franchise",
+    "BBL Big Bash CPL Caribbean Premier League county cricket domestic league",
 ]
 
 _allowed_embeddings = None

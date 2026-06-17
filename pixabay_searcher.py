@@ -495,9 +495,13 @@ def search_with_clip_validation(intent_result, article=None):
     if article and article.get("url"):
         og_url, og_path = _fetch_og_image(article["url"])
         if og_url and og_path:
-            print(f"  [IMAGE SOURCE] og:image (article's own photo) CLIP=1.000")
-            _mark_image_used(og_url)
-            return og_url, 1.0, 0, og_path
+            if _has_been_used(og_url):
+                print(f"  [IMAGE SOURCE] og:image — SKIPPED (already used in a previous post)")
+                _cleanup(og_path)
+            else:
+                print(f"  [IMAGE SOURCE] og:image (article's own photo) CLIP=1.000")
+                _mark_image_used(og_url)
+                return og_url, 1.0, 0, og_path
         else:
             print(f"  [IMAGE SOURCE] og:image — FAILED (no image tag or download error)")
 

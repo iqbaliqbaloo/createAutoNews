@@ -44,8 +44,8 @@ SPORT_CONTEXTS = {
     "FIFA":       ["world cup 2026", "fifa world cup", "worldcup", "wc2026",
                    "world cup group", "world cup final", "world cup match",
                    "world cup qualifier", "world cup result"],
-    "cricket":    ["cricket", "odi", "t20", "test match", "wicket", "innings",
-                   "icc", "psl", "ipl", "ashes", "over"],
+    "cricket":    ["cricket", "odi", "t20i", "test match", "wicket", "innings",
+                   "icc", "ashes", "series", "international"],
     "football":   ["football", "soccer", "goal", "penalty", "premier league",
                    "champions league", "la liga", "fifa", "bundesliga", "serie a",
                    "ucl", "europa", "epl", "fa cup"],
@@ -60,19 +60,26 @@ SPORT_CONTEXTS = {
 # Any of these in the title → match is definitely worth posting
 IMPORTANCE_SIGNALS = [
     "final", "semi-final", "semifinal", "world cup", "champions",
-    "ashes", "icc", "psl", "ipl", "live", "t20i", "odi",
+    "ashes", "icc", "live", "t20i", "odi",
     "test match", "asia cup", "grand slam", "grand prix",
     "won", "wins", "victory", "result", "preview", "series",
     "match", "pakistan", "fixture", "squad", "playing xi",
 ]
 
+# Domestic cricket leagues — skip these, only post international cricket
+_DOMESTIC_CRICKET = {
+    "psl", "ipl", "bbl", "big bash", "cpl", "caribbean premier",
+    "lpl", "lanka premier", "hundred", "the hundred",
+    "csa t20", "ram slam", "msl", "super smash", "vitality blast",
+    "county cricket", "ranji", "sheffield shield",
+}
+
 # RSS feeds covering ALL major sports — cricket, football, tennis, F1, etc.
 DISCOVERY_RSS = [
-    # Cricket — general + Pakistan-specific
+    # International cricket only (no PSL/IPL domestic feeds)
     "https://www.espncricinfo.com/rss/content/story/feeds/0.xml",
-    "https://news.google.com/rss/search?q=cricket+live+match&hl=en&gl=PK&ceid=PK:en",
-    "https://news.google.com/rss/search?q=pakistan+cricket+match+today&hl=en&gl=PK&ceid=PK:en",
-    "https://news.google.com/rss/search?q=pakistan+vs+cricket&hl=en&gl=PK&ceid=PK:en",
+    "https://news.google.com/rss/search?q=international+cricket+live+match&hl=en&gl=PK&ceid=PK:en",
+    "https://news.google.com/rss/search?q=pakistan+vs+international+cricket&hl=en&gl=PK&ceid=PK:en",
     # Football
     "https://news.google.com/rss/search?q=football+live+match+today&hl=en&gl=PK&ceid=PK:en",
     "https://news.google.com/rss/search?q=champions+league+match&hl=en&gl=PK&ceid=PK:en",
@@ -286,8 +293,9 @@ def _build_caption(match, event_type, score_text, update_text):
     tag    = LEAGUE_TAGS.get(league.upper(), ("SPORTS", (204, 41, 54)))[0]
 
     sport_label_map = {
-        "CRICKET":    "🏏 CRICKET",
+        "CRICKET":    "🏏 INTERNATIONAL CRICKET",
         "FOOTBALL":   "⚽ FOOTBALL",
+        "FIFA":       "⚽ FIFA WORLD CUP 2026",
         "TENNIS":     "🎾 TENNIS",
         "F1":         "🏎️ FORMULA 1",
         "BOXING":     "🥊 BOXING",
@@ -296,37 +304,44 @@ def _build_caption(match, event_type, score_text, update_text):
     }
     sport_label = sport_label_map.get(league.upper(), "🏆 SPORTS")
 
-    emoji_map = {
-        "GOAL":        f"{sport_label} | ⚽ GOAL!",
-        "WICKET":      f"{sport_label} | 🏏 WICKET!",
-        "CENTURY":     f"{sport_label} | 💯 CENTURY!",
-        "FIFTY":       f"{sport_label} | 🏏 FIFTY!",
-        "RED_CARD":    f"{sport_label} | 🟥 RED CARD!",
-        "HALF_TIME":   f"{sport_label} | ⏸ HALF TIME",
-        "FULL_TIME":   f"{sport_label} | 🏁 FULL TIME",
-        "RESULT":      f"{sport_label} | 🏆 RESULT",
-        "DEATH_OVERS": f"{sport_label} | 🔥 DEATH OVERS",
-        "UPDATE":      f"{sport_label} | 🔄 LIVE UPDATE",
-        "BREAK":       f"{sport_label} | ☕ INNINGS BREAK",
-        "MATCH DETECTED": f"{sport_label} | 🔔 MATCH ALERT",
+    event_label_map = {
+        "GOAL":           "⚽ GOAL!",
+        "WICKET":         "🏏 WICKET FALLS!",
+        "CENTURY":        "💯 CENTURY!",
+        "FIFTY":          "🏏 FIFTY UP!",
+        "RED_CARD":       "🟥 RED CARD!",
+        "HALF_TIME":      "⏸ HALF TIME",
+        "FULL_TIME":      "🏁 FULL TIME",
+        "RESULT":         "🏆 MATCH RESULT",
+        "DEATH_OVERS":    "🔥 FINAL OVERS",
+        "UPDATE":         "🔄 LIVE UPDATE",
+        "BREAK":          "☕ INNINGS BREAK",
+        "MATCH DETECTED": "🔔 MATCH ALERT",
     }
-    headline = emoji_map.get(event_type, f"{sport_label} | 🔄 LIVE UPDATE")
+    event_label = event_label_map.get(event_type, "🔄 LIVE UPDATE")
+    headline_line = f"{sport_label} | {event_label}"
 
-    live_prefix = "🔴 LIVE\n\n" if event_type in (
+    is_live_event = event_type in (
         "GOAL", "WICKET", "CENTURY", "RED_CARD", "DEATH_OVERS",
         "FULL_TIME", "RESULT", "HALF_TIME",
-    ) else ""
-    base = (
-        f"{live_prefix}{headline}\n\n"
+    )
+    live_prefix = "🔴 LIVE\n\n" if is_live_event else ""
+
+    body = (
+        f"{live_prefix}{headline_line}\n\n"
         f"{team1} vs {team2}\n"
         f"{score_text}\n\n"
-        f"{update_text}\n\n"
-        f"#{tag} #{team1.replace(' ', '')} #LiveScore #VisionaryMinds"
+        f"{update_text}"
     )
+
+    fb_tags  = f"#VisionaryMinds #BreakingNews #{tag.replace(' ', '')}"
+    ig_tags  = f"#VisionaryMinds #Cricket #InternationalCricket #LiveScore #{tag.replace(' ', '')}"
+    tg_tags  = f"#VisionaryMinds #{tag.replace(' ', '')} #LiveScore"
+
     return {
-        "facebook":  base[:500],
-        "instagram": base[:300] + "\n\n#Cricket #Football #LiveSports #VMUpdates",
-        "telegram":  base[:800],
+        "facebook":  f"{body}\n\n{fb_tags}",
+        "instagram": f"{body}\n\nFollow @VisionaryMinds for live updates 👇\n\n{ig_tags}",
+        "telegram":  f"{body}\n\n{tg_tags}",
     }
 
 
@@ -748,6 +763,16 @@ def _discover_matches(state):
             continue
 
         sport = _detect_sport(title)
+
+        # Skip domestic cricket leagues — only international cricket
+        if sport == "cricket" and any(kw in title for kw in _DOMESTIC_CRICKET):
+            logger.info(f"  Skipping domestic cricket: {title[:60]}")
+            continue
+
+        # Require at least one international cricket team name for cricket articles
+        if sport == "cricket" and not any(t in title for t in CRICKET_TEAMS):
+            logger.info(f"  Skipping cricket (no national team found): {title[:60]}")
+            continue
 
         # Sport sub-type
         if sport == "FIFA":
